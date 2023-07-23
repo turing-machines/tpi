@@ -1,0 +1,14 @@
+[package]
+name = "tpi"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.71"
+clap = { version = "4.3.5", features = ["derive"] }
+log = "0.4.19"
+reqwest = { version = "0.11.18", default-features = false, features = ["rustls-tls-native-roots"] }
+simple_logger = { version = "4.2.0", default-features = false, features = ["colors"] }
+tokio = { version = "1.29.1", features = ["rt", "rt-multi-thread", "macros"] }
+url = "2.4.0"
+
