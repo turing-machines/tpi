@@ -1,0 +1,94 @@
+name: Tpi tool CI
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+jobs:
+  clippy_check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v1
+      - run: rustup component add clippy
+      - uses: actions-rs/clippy-check@v1
+        with:
+          token: '${{ secrets.GITHUB_TOKEN }}'
+          args: '--all-features'
+  target-pipeline:
+    name: "${{ matrix.target }}"
+    strategy:
+      matrix:
+        target:
+          - aarch64-unknown-linux-gnu
+          - aarch64-apple-darwin
+          - x86_64-apple-darwin
+          - x86_64-pc-windows-msvc
+          - x86_64-unknown-linux-gnu
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-22.04
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-22.04
+            cross: true
+          - target: aarch64-apple-darwin
+            os: macos-13
+          - target: x86_64-apple-darwin
+            os: macos-13
+          - target: x86_64-pc-windows-msvc
+            os: windows-2022
+    runs-on: '${{ matrix.os }}'
+    steps:
+      - uses: actions/checkout@v3
+      - name: install toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          default: true
+          profile: minimal
+          target: '${{ matrix.target }}'
+      - name: build
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: '--release --locked --target=${{ matrix.target }}'
+          use-cross: ${{ matrix.cross }}
+      - name: archive
+        uses: actions/upload-artifact@v3
+        with:
+          name: 'build output'
+          path: |
+            # workaround to prevent a common ancestor in the files,
+            # this way we can perserve the folder structure.
+            .github/workflows/build.yml
+            target/${{ matrix.target }}/release/tpi
+            target/${{ matrix.target }}/release/tpi.exe
+
+  archive:
+    name: ${{ matrix.name }} packager
+    runs-on: ubuntu-latest
+    needs: target-pipeline
+    strategy:
+      matrix:
+        name:
+          - debian
+          - arch
+          - windows
+          - macos
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/download-artifact@v3
+        with:
+          name: 'build output'
+      - name: running archiver 
+        run: scripts/ci/package.sh ${{ matrix.name }}
+      - name: archive packages
+        uses: actions/upload-artifact@v3
+        with:
+          name: '${{ matrix.name }} packages'
+          path: |
+            target/debian/*.deb 
+            target/arch/*
+            target/win/*
+            target/apple/*
