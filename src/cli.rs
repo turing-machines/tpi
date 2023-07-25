@@ -18,7 +18,7 @@ pub struct Cli {
 3. First host to respond to redfish service discovery
 "
     )]
-    #[arg(default_value = "turing-pi.local")]
+    #[arg(default_value = "turingpi.local")]
     pub host: Option<String>,
 }
 
@@ -37,7 +37,7 @@ pub enum Commands {
     Uart(UartArgs),
 }
 
-#[derive(ValueEnum, Clone)]
+#[derive(ValueEnum, Clone, PartialEq)]
 pub enum UsbConfig {
     Device,
     Host,
@@ -54,7 +54,7 @@ pub enum OnOff {
 pub struct EthArgs {
     /// reset ethernet switch
     #[arg(short, long)]
-    reset: bool,
+    pub reset: bool,
 }
 
 #[derive(Args)]
@@ -63,12 +63,15 @@ pub struct UartArgs {}
 #[derive(Args, Clone)]
 pub struct UsbArgs {
     #[arg(value_parser = clap::value_parser!(u8).range(1..4))]
-    node: u8,
+    pub node: Option<u8>,
     /// specify which mode to set the given node in.
-    mode: UsbConfig,
+    pub mode: Option<UsbConfig>,
+    // #[arg(short, long)]
+    // /// instead of USB-A, route usb-bus to the BMC chip.
+    // pub bmc: bool,
     #[arg(short, long)]
-    /// instead of USB-A, route usb-bus to the BMC chip.
-    bmc: bool,
+    /// Set the boot pin, referred to as rpiboot pin high
+    pub boot_mode: bool,
 }
 
 #[derive(Args, Clone)]
@@ -78,7 +81,7 @@ pub struct FirwmareArgs {}
 #[derive(Args)]
 pub struct PowerArgs {
     // specify command
-    pub cmd: OnOff,
+    pub cmd: Option<OnOff>,
     /// turn on/off a specific node. (1-4)
     #[arg(value_parser = clap::value_parser!(u8).range(1..4))]
     pub node: Option<u8>,
