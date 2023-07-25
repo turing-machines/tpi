@@ -25,12 +25,9 @@ package_deb() {
     }
 
     package_arch() { 
-        cargo install cargo-aur
-        cargo aur
-        mkdir -p target/$1/arch
-        mv *.tar.gz PKGBUILD target/$1/arch
+        # PKGBUILD is build using build-script of the tpi crate
+        cp target/$1/release/build/*/out/PKGBUILD target/arch
     }
-
 
     for target in $(ls target| grep linux)
     do

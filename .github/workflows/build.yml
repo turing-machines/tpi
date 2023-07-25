@@ -64,6 +64,7 @@ jobs:
             .github/workflows/build.yml
             target/${{ matrix.target }}/release/tpi
             target/${{ matrix.target }}/release/tpi.exe
+            target/${{ matrix.target }}/release/build/*/out/PKGBUILD
 
   archive:
     name: ${{ matrix.name }} packager
