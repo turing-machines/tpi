@@ -89,7 +89,7 @@ jobs:
         with:
           name: '${{ matrix.name }} packages'
           path: |
-            target/debian/*.deb 
+            target/debian/* 
             target/arch/*
             target/win/*
             target/apple/*
