@@ -1,8 +1,12 @@
 use std::fs::File;
-use std::io;
 use std::io::Write;
+use std::{env, io};
 
 fn main() -> io::Result<()> {
+    generate_pgkbuild()
+}
+
+fn generate_pgkbuild() -> io::Result<()> {
     let pkg_name = format!("{}-{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
     let mut pkgbuild = File::create(format!("{}/PKGBUILD", std::env::var("OUT_DIR").unwrap()))?;
     writeln!(pkgbuild, "# Maintainer: {}\n", env!("CARGO_PKG_AUTHORS"))?;
@@ -54,6 +58,5 @@ fn main() -> io::Result<()> {
 }}"#,
         pkg_name,
         env!("CARGO_PKG_NAME")
-    )?;
-    Ok(())
+    )
 }
