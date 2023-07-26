@@ -18,6 +18,8 @@ impl LegacyHandler {
         Ok(Self { base_url })
     }
 
+    /// Simple handler for CLI commands. Responses are printed to stdout and need to be formatted
+    /// using the json format with a key `response`.
     pub async fn handle_cmd(mut self, command: Commands) -> anyhow::Result<()> {
         match command {
             Commands::Power(args) => handle_power_nodes(args, &mut self.base_url.query_pairs_mut()),
@@ -33,13 +35,15 @@ impl LegacyHandler {
             .context("http request error")?;
 
         let status = response.status();
-        let body = response.text().await?;
+        let body: serde_json::Value = response.json().await?;
         status
             .is_success()
             .then(|| {
-                if !body.is_empty() {
-                    println!("{}", body);
-                }
+                let txt = body
+                    .get("response")
+                    .map(ToString::to_string)
+                    .unwrap_or("unexpected response body".to_string());
+                println!("{}", txt);
             })
             .ok_or_else(|| {
                 anyhow!(

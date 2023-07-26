@@ -932,6 +932,7 @@ dependencies = [
  "clap",
  "log",
  "reqwest",
+ "serde_json",
  "simple_logger",
  "tokio",
  "url",
