@@ -1,7 +1,7 @@
-use crate::cli::UsbConfig;
-use crate::cli::{Commands, EthArgs, FirwmareArgs, OnOff, PowerArgs, UartArgs, UsbArgs};
-use anyhow::Context;
+use crate::cli::UsbCmd;
+use crate::cli::{Commands, EthArgs, FirwmareArgs, PowerArgs, PowerCmd, UartArgs, UsbArgs};
 use anyhow::{anyhow, ensure};
+use anyhow::{bail, Context};
 use reqwest::{Client, Method, Request};
 use url::form_urlencoded::Serializer;
 use url::Url;
@@ -20,13 +20,17 @@ impl LegacyHandler {
 
     /// Simple handler for CLI commands. Responses are printed to stdout and need to be formatted
     /// using the json format with a key `response`.
-    pub async fn handle_cmd(mut self, command: Commands) -> anyhow::Result<()> {
+    pub async fn handle_cmd(mut self, node: Option<u8>, command: Commands) -> anyhow::Result<()> {
         match command {
-            Commands::Power(args) => handle_power_nodes(args, &mut self.base_url.query_pairs_mut()),
-            Commands::Usb(args) => handle_usb(args, &mut self.base_url.query_pairs_mut())?,
-            Commands::Firmware(args) => handle_firmware(args, &mut self.base_url.query_pairs_mut()),
+            Commands::Power(args) => {
+                handle_power_nodes(args, node, &mut self.base_url.query_pairs_mut())
+            }
+            Commands::Usb(args) => handle_usb(args, node, &mut self.base_url.query_pairs_mut())?,
+            Commands::Firmware(args) => {
+                handle_firmware(args, node, &mut self.base_url.query_pairs_mut())?
+            }
             Commands::Eth(args) => handle_eth(args, &mut self.base_url.query_pairs_mut()),
-            Commands::Uart(args) => handle_uart(args, &mut self.base_url.query_pairs_mut()),
+            Commands::Uart(args) => handle_uart(args, &mut self.base_url.query_pairs_mut())?,
         }
 
         let response = Client::new()
@@ -45,17 +49,18 @@ impl LegacyHandler {
                     .unwrap_or("unexpected response body".to_string());
                 println!("{}", txt);
             })
-            .ok_or_else(|| {
-                anyhow!(
-                    "request unsuccessful: {}",
-                    status.canonical_reason().unwrap_or_default()
-                )
-            })
+            .ok_or(anyhow!(
+                "request unsuccessful: {}",
+                status.canonical_reason().unwrap_or_default()
+            ))
     }
 }
 
-fn handle_uart(args: UartArgs, serializer: &mut Serializer<'_, UrlQuery<'_>>) {
-    todo!()
+fn handle_uart(
+    args: UartArgs,
+    serializer: &mut Serializer<'_, UrlQuery<'_>>,
+) -> anyhow::Result<()> {
+    bail!("not yet implemented")
 }
 
 fn handle_eth(args: EthArgs, serializer: &mut Serializer<'_, UrlQuery<'_>>) {
@@ -67,24 +72,40 @@ fn handle_eth(args: EthArgs, serializer: &mut Serializer<'_, UrlQuery<'_>>) {
     }
 }
 
-fn handle_firmware(args: FirwmareArgs, serializer: &mut Serializer<'_, UrlQuery<'_>>) {
-    todo!()
+fn handle_firmware(
+    args: FirwmareArgs,
+    node: Option<u8>,
+    serializer: &mut Serializer<'_, UrlQuery<'_>>,
+) -> anyhow::Result<()> {
+    ensure!(args.bmc.is_none(), "not yet implemented");
+    ensure!(args.flash.is_none(), "not yet implemented");
+    ensure!(node.is_some(), "`node` argument must be set.");
+    serializer
+        .append_pair("opt", "set")
+        .append_pair("type", "flash")
+        .append_pair("file", &args.local.unwrap().to_string_lossy())
+        .append_pair("node", &node.unwrap_or_default().to_string());
+    Ok(())
 }
 
-fn handle_usb(args: UsbArgs, serializer: &mut Serializer<'_, UrlQuery<'_>>) -> anyhow::Result<()> {
-    if args.mode.is_none() {
+fn handle_usb(
+    args: UsbArgs,
+    node: Option<u8>,
+    serializer: &mut Serializer<'_, UrlQuery<'_>>,
+) -> anyhow::Result<()> {
+    if args.mode == UsbCmd::Status {
         serializer
             .append_pair("opt", "get")
             .append_pair("type", "usb");
         return Ok(());
     }
 
-    ensure!(args.node.is_some(), "node argument must be defined");
+    ensure!(node.is_some(), "`node` argument must be set.");
     serializer
         .append_pair("opt", "set")
         .append_pair("type", "usb")
-        .append_pair("node", &args.node.unwrap_or_default().to_string());
-    if args.mode.expect("mode is tested for some") == UsbConfig::Host {
+        .append_pair("node", &node.unwrap_or_default().to_string());
+    if args.mode == UsbCmd::Host {
         serializer.append_pair("mode", "0");
     } else {
         serializer.append_pair("mode", "1");
@@ -96,8 +117,12 @@ fn handle_usb(args: UsbArgs, serializer: &mut Serializer<'_, UrlQuery<'_>>) -> a
     Ok(())
 }
 
-fn handle_power_nodes(args: PowerArgs, serializer: &mut Serializer<'_, UrlQuery<'_>>) {
-    if args.cmd.is_none() {
+fn handle_power_nodes(
+    args: PowerArgs,
+    node: Option<u8>,
+    serializer: &mut Serializer<'_, UrlQuery<'_>>,
+) {
+    if args.cmd == PowerCmd::Status {
         serializer
             .append_pair("opt", "get")
             .append_pair("type", "power");
@@ -108,13 +133,9 @@ fn handle_power_nodes(args: PowerArgs, serializer: &mut Serializer<'_, UrlQuery<
         .append_pair("opt", "set")
         .append_pair("type", "power");
 
-    let on_bit = if args.cmd.expect("cmd is tested for some") == OnOff::On {
-        "1"
-    } else {
-        "0"
-    };
+    let on_bit = if args.cmd == PowerCmd::On { "1" } else { "0" };
 
-    if let Some(node) = args.node {
+    if let Some(node) = node {
         serializer.append_pair(&format!("node{}", node), on_bit);
     } else {
         serializer.append_pair("node1", on_bit);

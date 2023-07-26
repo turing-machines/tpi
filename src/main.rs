@@ -29,6 +29,6 @@ async fn main() -> anyhow::Result<()> {
         .map_err(|_| anyhow!("please enter a valid hostname"))?;
 
     LegacyHandler::new(host.to_string())?
-        .handle_cmd(cli.command)
+        .handle_cmd(cli.node, cli.command)
         .await
 }
