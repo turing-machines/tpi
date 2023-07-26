@@ -11,7 +11,7 @@ use std::path::PathBuf;
 #[command(propagate_version = true)]
 pub struct Cli {
     #[command(subcommand)]
-    pub command: Commands,
+    pub command: Option<Commands>,
     #[arg(
         help = "Optional turing-pi host to connect to. Host will be determind given the following order:
 1. Explicitly passed via the Cli
@@ -19,8 +19,11 @@ pub struct Cli {
 3. First host to respond to redfish service discovery
 "
     )]
-    #[arg(default_value = "turingpi.local", long)]
+    #[arg(default_value = "turingpi.local", long, global = true)]
     pub host: Option<String>,
+
+    #[arg(short, name = "gen completion", exclusive = true)]
+    pub gencompletion: Option<clap_complete::shells::Shell>,
 }
 
 #[derive(Subcommand)]
