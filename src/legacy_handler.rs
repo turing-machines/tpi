@@ -84,7 +84,7 @@ fn handle_firmware(
         .append_pair("opt", "set")
         .append_pair("type", "flash")
         .append_pair("file", &args.local.unwrap().to_string_lossy())
-        .append_pair("node", &node.unwrap_or_default().to_string());
+        .append_pair("node", &node.map(|x| x - 1).unwrap_or_default().to_string());
     Ok(())
 }
 
@@ -104,7 +104,7 @@ fn handle_usb(
     serializer
         .append_pair("opt", "set")
         .append_pair("type", "usb")
-        .append_pair("node", &node.unwrap_or_default().to_string());
+        .append_pair("node", &node.map(|x| x - 1).unwrap_or_default().to_string());
     if args.mode == UsbCmd::Host {
         serializer.append_pair("mode", "0");
     } else {

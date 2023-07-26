@@ -24,7 +24,7 @@ pub struct Cli {
     /// [possible values: 1-4], Not specifying a node
     /// selects all nodes.
     #[arg(short, long)]
-    #[arg(value_parser = clap::value_parser!(u8).range(1..4))]
+    #[arg(value_parser = clap::value_parser!(u8).range(1..5))]
     pub node: Option<u8>,
 }
 
