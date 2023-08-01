@@ -19,13 +19,8 @@ pub struct Cli {
 3. First host to respond to redfish service discovery
 "
     )]
-    #[arg(default_value = "turingpi.local")]
+    #[arg(default_value = "turingpi.local", long)]
     pub host: Option<String>,
-    /// [possible values: 1-4], Not specifying a node
-    /// selects all nodes.
-    #[arg(short, long)]
-    #[arg(value_parser = clap::value_parser!(u8).range(1..5))]
-    pub node: Option<u8>,
 }
 
 #[derive(Subcommand)]
@@ -35,12 +30,20 @@ pub enum Commands {
     /// Change the USB device/host configuration. The USB-bus can only be routed to one
     /// node simultaniously.
     Usb(UsbArgs),
-    /// Upgrade the firmware of the BMC or an specified node.
-    Firmware(FirwmareArgs),
+    /// Upgrade the firmware of the BMC
+    Firmware(FirmwareArgs),
+    /// Flash a given node
+    Flash(FlashArgs),
     /// configure the on-board ethernet switch.
     Eth(EthArgs),
-    /// [depricated] forward a uart command or get a line from the serial.
+    /// [deprecated] forward a uart command or get a line from the serial.
     Uart(UartArgs),
+}
+
+#[derive(ValueEnum, Clone, PartialEq)]
+pub enum GetSet {
+    Get,
+    Set,
 }
 
 #[derive(ValueEnum, Clone, PartialEq)]
@@ -55,7 +58,7 @@ pub enum PowerCmd {
     On,
     Off,
     Reset,
-    Status,
+    Get,
 }
 
 #[derive(Args, Clone)]
@@ -66,37 +69,64 @@ pub struct EthArgs {
 }
 
 #[derive(Args)]
-pub struct UartArgs {}
+pub struct UartArgs {
+    pub action: GetSet,
+    /// [possible values: 1-4], Not specifying a node
+    /// selects all nodes.
+    #[arg(short, long)]
+    #[arg(value_parser = clap::value_parser!(u8).range(1..5))]
+    pub node: u8,
+    #[arg(short, long)]
+    pub cmd: Option<String>,
+}
 
 #[derive(Args, Clone)]
 pub struct UsbArgs {
     /// specify which mode to set the given node in.
+    #[arg(short, long)]
     pub mode: UsbCmd,
-    // #[arg(short, long)]
     // /// instead of USB-A, route usb-bus to the BMC chip.
-    // pub bmc: bool,
+    #[arg(short, long)]
+    pub bmc: bool,
     /// Set the boot pin, referred to as 'rpiboot pin' high
     #[arg(short, long)]
-    pub boot_mode: bool,
+    pub usb_boot: bool,
+    /// [possible values: 1-4], Not specifying a node
+    /// selects all nodes.
+    #[arg(short, long)]
+    #[arg(value_parser = clap::value_parser!(u8).range(1..5))]
+    pub node: u8,
+}
+
+#[derive(Args, Clone)]
+pub struct FirmwareArgs {
+    #[arg(short, long)]
+    pub file: PathBuf,
 }
 
 #[derive(Args, Clone)]
 #[group(required = true)]
-pub struct FirwmareArgs {
-    /// Update the firmware of the BMC itself with the given path.
-    #[arg(short, long)]
-    pub bmc: Option<PathBuf>,
+pub struct FlashArgs {
     /// Update a node with an image local on the disk.
     #[arg(short, long)]
-    pub local: Option<PathBuf>,
+    pub local: bool,
     /// Update a node with the given image.
     #[arg(short, long)]
-    pub flash: Option<PathBuf>,
+    pub image_path: PathBuf,
+    /// [possible values: 1-4], Not specifying a node
+    /// selects all nodes.
+    #[arg(short, long)]
+    #[arg(value_parser = clap::value_parser!(u8).range(1..5))]
+    pub node: u8,
 }
 
-/// wasdfads
 #[derive(Args)]
 pub struct PowerArgs {
     // specify command
     pub cmd: PowerCmd,
+    /// [possible values: 1-4], Not specifying a node
+    /// selects all nodes.
+    #[arg(short, long)]
+    #[arg(value_parser = clap::value_parser!(u8).range(1..5))]
+    pub node: Option<u8>,
 }

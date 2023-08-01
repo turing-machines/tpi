@@ -28,7 +28,8 @@ async fn main() -> anyhow::Result<()> {
     let host = url::Host::parse(&cli.host.expect("host has a default set"))
         .map_err(|_| anyhow!("please enter a valid hostname"))?;
 
-    LegacyHandler::new(host.to_string())?
-        .handle_cmd(cli.node, cli.command)
+    LegacyHandler::new(host.to_string())
+        .await?
+        .handle_cmd(cli.command)
         .await
 }

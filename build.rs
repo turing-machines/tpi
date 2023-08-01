@@ -5,7 +5,7 @@ use std::io::Write;
 fn main() -> io::Result<()> {
     let mut pkgbuild = File::create(format!("{}/PKGBUILD", std::env::var("OUT_DIR").unwrap()))?;
     writeln!(pkgbuild, "# Maintainer: {}\n", env!("CARGO_PKG_AUTHORS"))?;
-    writeln!(pkgbuild, "pkgname={}-bin", env!("CARGO_PKG_NAME"))?;
+    writeln!(pkgbuild, "pkgname={}-git", env!("CARGO_PKG_NAME"))?;
     writeln!(pkgbuild, "pkgver={}", env!("CARGO_PKG_VERSION"))?;
     writeln!(pkgbuild, "pkgrel=1")?;
     writeln!(pkgbuild, "pkgdesc='{}'", env!("CARGO_PKG_DESCRIPTION"))?;

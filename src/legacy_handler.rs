@@ -1,43 +1,55 @@
-use crate::cli::UsbCmd;
-use crate::cli::{Commands, EthArgs, FirwmareArgs, PowerArgs, PowerCmd, UartArgs, UsbArgs};
-use anyhow::{anyhow, ensure};
-use anyhow::{bail, Context};
-use reqwest::{Client, Method, Request};
-use url::form_urlencoded::Serializer;
+use crate::cli::{Commands, EthArgs, FirmwareArgs, GetSet, PowerArgs, PowerCmd, UartArgs, UsbArgs};
+use crate::cli::{FlashArgs, UsbCmd};
+use anyhow::Context;
+use anyhow::{anyhow, ensure, Ok};
+use reqwest::{
+    multipart::{Form, Part},
+    Client, Method,
+};
 use url::Url;
-use url::UrlQuery;
+
+macro_rules! dispatch_cmd {
+   ($self: expr, $command_instance:ident, $($cmd:ident -> $handler:ident),+) => {
+       match $command_instance {
+           $(Commands::$cmd(args) => {
+               $self.$handler(args).await?
+           })*
+       }
+   }
+}
 
 pub struct LegacyHandler {
-    base_url: Url,
+    url: Url,
 }
 
 impl LegacyHandler {
-    pub fn new(host: String) -> anyhow::Result<Self> {
-        let mut base_url = Url::parse(&format!("http://{}", host))?;
-        base_url.set_path("api/bmc");
-        Ok(Self { base_url })
+    pub async fn new(host: String) -> anyhow::Result<Self> {
+        let mut url = Url::parse(&format!("http://{}", host))?;
+        url.set_path("api/bmc");
+        Ok(Self { url })
     }
 
     /// Simple handler for CLI commands. Responses are printed to stdout and need to be formatted
     /// using the json format with a key `response`.
-    pub async fn handle_cmd(mut self, node: Option<u8>, command: Commands) -> anyhow::Result<()> {
-        match command {
-            Commands::Power(args) => {
-                handle_power_nodes(args, node, &mut self.base_url.query_pairs_mut())
-            }
-            Commands::Usb(args) => handle_usb(args, node, &mut self.base_url.query_pairs_mut())?,
-            Commands::Firmware(args) => {
-                handle_firmware(args, node, &mut self.base_url.query_pairs_mut())?
-            }
-            Commands::Eth(args) => handle_eth(args, &mut self.base_url.query_pairs_mut()),
-            Commands::Uart(args) => handle_uart(args, &mut self.base_url.query_pairs_mut())?,
-        }
+    pub async fn handle_cmd(mut self, command: Commands) -> anyhow::Result<()> {
+        let form = dispatch_cmd!(
+            self,
+            command,
+            Power -> handle_power_nodes,
+            Usb -> handle_usb,
+            Flash -> handle_flash,
+            Firmware -> handle_firmware,
+            Eth -> handle_eth,
+            Uart -> handle_uart
+        );
 
-        let response = Client::new()
-            .execute(Request::new(Method::GET, self.base_url))
-            .await
-            .context("http request error")?;
+        let request = if let Some(form) = form {
+            Client::new().post(self.url).multipart(form)
+        } else {
+            Client::new().request(Method::GET, self.url)
+        };
 
+        let response = request.send().await.context("http request error")?;
         let status = response.status();
         let body: serde_json::Value = response.json().await?;
         status
@@ -54,93 +66,134 @@ impl LegacyHandler {
                 status.canonical_reason().unwrap_or_default()
             ))
     }
-}
 
-fn handle_uart(
-    args: UartArgs,
-    serializer: &mut Serializer<'_, UrlQuery<'_>>,
-) -> anyhow::Result<()> {
-    bail!("not yet implemented")
-}
+    async fn handle_uart(&mut self, args: UartArgs) -> anyhow::Result<Option<Form>> {
+        let mut serializer = self.url.query_pairs_mut();
+        if args.action == GetSet::Get {
+            serializer
+                .append_pair("opt", "get")
+                .append_pair("type", "uart")
+                .append_pair("node", &(args.node - 1).to_string());
+        } else {
+            ensure!(
+                args.cmd.is_some(),
+                "uart set command requires `--cmd` argument."
+            );
+            serializer
+                .append_pair("opt", "set")
+                .append_pair("type", "uart")
+                .append_pair("node", &(args.node - 1).to_string())
+                .append_pair("cmd", &args.cmd.unwrap());
+        }
+        Ok(None)
+    }
 
-fn handle_eth(args: EthArgs, serializer: &mut Serializer<'_, UrlQuery<'_>>) {
-    if args.reset {
+    async fn handle_eth(&mut self, args: EthArgs) -> anyhow::Result<Option<Form>> {
+        if args.reset {
+            self.url
+                .query_pairs_mut()
+                .append_pair("opt", "set")
+                .append_pair("type", "network")
+                .append_pair("cmd", "reset");
+        }
+        Ok(None)
+    }
+
+    async fn handle_firmware(&mut self, args: FirmwareArgs) -> anyhow::Result<Option<Form>> {
+        let file_name = args
+            .file
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        let bytes = tokio::fs::read(&args.file).await?;
+        let part = Part::stream(bytes)
+            .mime_str("application/octet-stream")?
+            .file_name(file_name);
+        Ok(Some(reqwest::multipart::Form::new().part("file", part)))
+    }
+
+    async fn handle_flash(&mut self, args: FlashArgs) -> anyhow::Result<Option<Form>> {
+        let mut serializer = self.url.query_pairs_mut();
         serializer
             .append_pair("opt", "set")
-            .append_pair("type", "network")
-            .append_pair("cmd", "reset");
+            .append_pair("type", "flash")
+            .append_pair("node", &(args.node - 1).to_string());
+
+        if args.local {
+            serializer.append_pair("file", &args.image_path.to_string_lossy());
+            Ok(None)
+        } else {
+            let file_name = args
+                .image_path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
+            let bytes = tokio::fs::read(&args.image_path).await?;
+            let part = Part::stream(bytes)
+                .mime_str("application/octet-stream")?
+                .file_name(file_name);
+            Ok(Some(reqwest::multipart::Form::new().part("file", part)))
+        }
     }
-}
 
-fn handle_firmware(
-    args: FirwmareArgs,
-    node: Option<u8>,
-    serializer: &mut Serializer<'_, UrlQuery<'_>>,
-) -> anyhow::Result<()> {
-    ensure!(args.bmc.is_none(), "not yet implemented");
-    ensure!(args.flash.is_none(), "not yet implemented");
-    ensure!(node.is_some(), "`node` argument must be set.");
-    serializer
-        .append_pair("opt", "set")
-        .append_pair("type", "flash")
-        .append_pair("file", &args.local.unwrap().to_string_lossy())
-        .append_pair("node", &node.map(|x| x - 1).unwrap_or_default().to_string());
-    Ok(())
-}
+    async fn handle_usb(&mut self, args: UsbArgs) -> anyhow::Result<Option<Form>> {
+        let mut serializer = self.url.query_pairs_mut();
+        if args.mode == UsbCmd::Status {
+            serializer
+                .append_pair("opt", "get")
+                .append_pair("type", "usb");
+            return Ok(None);
+        }
 
-fn handle_usb(
-    args: UsbArgs,
-    node: Option<u8>,
-    serializer: &mut Serializer<'_, UrlQuery<'_>>,
-) -> anyhow::Result<()> {
-    if args.mode == UsbCmd::Status {
         serializer
-            .append_pair("opt", "get")
-            .append_pair("type", "usb");
-        return Ok(());
+            .append_pair("opt", "set")
+            .append_pair("type", "usb")
+            .append_pair("node", &(args.node - 1).to_string());
+
+        if args.mode == UsbCmd::Host {
+            serializer.append_pair("mode", "0");
+        } else {
+            serializer.append_pair("mode", "1");
+        }
+
+        if args.usb_boot {
+            serializer.append_pair("boot_pin", "1");
+        }
+        Ok(None)
     }
 
-    ensure!(node.is_some(), "`node` argument must be set.");
-    serializer
-        .append_pair("opt", "set")
-        .append_pair("type", "usb")
-        .append_pair("node", &node.map(|x| x - 1).unwrap_or_default().to_string());
-    if args.mode == UsbCmd::Host {
-        serializer.append_pair("mode", "0");
-    } else {
-        serializer.append_pair("mode", "1");
-    }
+    async fn handle_power_nodes(&mut self, args: PowerArgs) -> anyhow::Result<Option<Form>> {
+        let mut serializer = self.url.query_pairs_mut();
+        if args.cmd == PowerCmd::Get {
+            serializer
+                .append_pair("opt", "get")
+                .append_pair("type", "power");
+            return Ok(None);
+        } else if args.cmd == PowerCmd::Reset {
+            ensure!(args.node.is_some(), "`--node` argument must be set.");
+            serializer
+                .append_pair("opt", "set")
+                .append_pair("type", "reset")
+                .append_pair("node", &args.node.unwrap().to_string());
+            return Ok(None);
+        }
 
-    if args.boot_mode {
-        serializer.append_pair("boot_pin", "1");
-    }
-    Ok(())
-}
-
-fn handle_power_nodes(
-    args: PowerArgs,
-    node: Option<u8>,
-    serializer: &mut Serializer<'_, UrlQuery<'_>>,
-) {
-    if args.cmd == PowerCmd::Status {
         serializer
-            .append_pair("opt", "get")
+            .append_pair("opt", "set")
             .append_pair("type", "power");
-        return;
-    }
 
-    serializer
-        .append_pair("opt", "set")
-        .append_pair("type", "power");
+        let on_bit = if args.cmd == PowerCmd::On { "1" } else { "0" };
 
-    let on_bit = if args.cmd == PowerCmd::On { "1" } else { "0" };
-
-    if let Some(node) = node {
-        serializer.append_pair(&format!("node{}", node), on_bit);
-    } else {
-        serializer.append_pair("node1", on_bit);
-        serializer.append_pair("node2", on_bit);
-        serializer.append_pair("node3", on_bit);
-        serializer.append_pair("node4", on_bit);
+        if let Some(node) = args.node {
+            serializer.append_pair(&format!("node{}", node), on_bit);
+        } else {
+            serializer.append_pair("node1", on_bit);
+            serializer.append_pair("node2", on_bit);
+            serializer.append_pair("node3", on_bit);
+            serializer.append_pair("node4", on_bit);
+        }
+        Ok(None)
     }
 }
