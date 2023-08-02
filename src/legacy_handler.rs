@@ -124,6 +124,7 @@ impl LegacyHandler {
             serializer.append_pair("file", &args.image_path.to_string_lossy());
             Ok(None)
         } else {
+            println!("Warning: large files will very likely to fail to be uploaded in the current version");
             let file_name = args
                 .image_path
                 .file_name()
