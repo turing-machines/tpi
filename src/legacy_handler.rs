@@ -1,7 +1,7 @@
 use crate::cli::{Commands, EthArgs, FirmwareArgs, GetSet, PowerArgs, PowerCmd, UartArgs, UsbArgs};
 use crate::cli::{FlashArgs, UsbCmd};
-use anyhow::Context;
 use anyhow::{anyhow, ensure, Ok};
+use anyhow::{bail, Context};
 use reqwest::{
     multipart::{Form, Part},
     Client, Method,
@@ -140,6 +140,10 @@ impl LegacyHandler {
     }
 
     async fn handle_usb(&mut self, args: UsbArgs) -> anyhow::Result<Option<Form>> {
+        if args.bmc {
+            bail!("--bmc argument not implemented yet!");
+        }
+
         let mut serializer = self.url.query_pairs_mut();
         if args.mode == UsbCmd::Status {
             serializer
