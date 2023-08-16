@@ -68,7 +68,7 @@ impl LegacyHandler {
                     || {
                         // In this case there is no printer set, fallback on
                         // printing the http response body as text.
-                        println!("{}", response_key.to_string());
+                        println!("{}", response_key);
                     },
                     |f| f(response_key),
                 )
