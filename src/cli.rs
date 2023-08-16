@@ -8,7 +8,7 @@ use std::path::PathBuf;
 /// of options.
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
-#[command(propagate_version = true)]
+#[command(propagate_version = true, arg_required_else_help = true)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Commands>,
@@ -21,7 +21,8 @@ pub struct Cli {
     )]
     #[arg(default_value = "turingpi.local", long, global = true)]
     pub host: Option<String>,
-
+    #[arg(long, help = "print results formatted as json")]
+    pub json: bool,
     #[arg(short, name = "gen completion", exclusive = true)]
     pub gencompletion: Option<clap_complete::shells::Shell>,
 }
