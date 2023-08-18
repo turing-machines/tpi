@@ -27,7 +27,7 @@ impl LegacyHandler {
 
     /// Handler for CLI commands. Responses are printed to stdout and need to be formatted
     /// using the json format with a key `response`.
-    pub async fn handle_cmd(mut self, command: Commands) -> anyhow::Result<()> {
+    pub async fn handle_cmd(mut self, command: &Commands) -> anyhow::Result<()> {
         let form = match command {
             Commands::Power(args) => self.handle_power_nodes(args)?,
             Commands::Usb(args) => self.handle_usb(args)?,
@@ -75,7 +75,7 @@ impl LegacyHandler {
             })
     }
 
-    fn handle_uart(&mut self, args: UartArgs) -> anyhow::Result<Option<Form>> {
+    fn handle_uart(&mut self, args: &UartArgs) -> anyhow::Result<Option<Form>> {
         let mut serializer = self.url.query_pairs_mut();
         if args.action == GetSet::Get {
             serializer
@@ -91,23 +91,25 @@ impl LegacyHandler {
                 .append_pair("opt", "set")
                 .append_pair("type", "uart")
                 .append_pair("node", &(args.node - 1).to_string())
-                .append_pair("cmd", &args.cmd.unwrap());
+                .append_pair("cmd", args.cmd.as_ref().unwrap());
         }
         Ok(None)
     }
 
-    fn handle_eth(&mut self, args: EthArgs) -> anyhow::Result<Option<Form>> {
+    fn handle_eth(&mut self, args: &EthArgs) -> anyhow::Result<Option<Form>> {
         if args.reset {
             self.url
                 .query_pairs_mut()
                 .append_pair("opt", "set")
                 .append_pair("type", "network")
                 .append_pair("cmd", "reset");
+        } else {
+            bail!("eth subcommand called without any actions");
         }
         Ok(None)
     }
 
-    async fn handle_firmware(&mut self, args: FirmwareArgs) -> anyhow::Result<Option<Form>> {
+    async fn handle_firmware(&mut self, args: &FirmwareArgs) -> anyhow::Result<Option<Form>> {
         let file_name = args
             .file
             .file_name()
@@ -121,7 +123,7 @@ impl LegacyHandler {
         Ok(Some(reqwest::multipart::Form::new().part("file", part)))
     }
 
-    async fn handle_flash(&mut self, args: FlashArgs) -> anyhow::Result<Option<Form>> {
+    async fn handle_flash(&mut self, args: &FlashArgs) -> anyhow::Result<Option<Form>> {
         let mut serializer = self.url.query_pairs_mut();
         serializer
             .append_pair("opt", "set")
@@ -147,7 +149,7 @@ impl LegacyHandler {
         }
     }
 
-    fn handle_usb(&mut self, args: UsbArgs) -> anyhow::Result<Option<Form>> {
+    fn handle_usb(&mut self, args: &UsbArgs) -> anyhow::Result<Option<Form>> {
         if args.bmc {
             bail!("--bmc argument not implemented yet!");
         }
@@ -177,7 +179,7 @@ impl LegacyHandler {
         Ok(None)
     }
 
-    fn handle_power_nodes(&mut self, args: PowerArgs) -> anyhow::Result<Option<Form>> {
+    fn handle_power_nodes(&mut self, args: &PowerArgs) -> anyhow::Result<Option<Form>> {
         let mut serializer = self.url.query_pairs_mut();
         if args.cmd == PowerCmd::Get {
             serializer

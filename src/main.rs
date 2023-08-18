@@ -20,16 +20,27 @@ async fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
 
-    if let Err(e) = execute_cli_command(cli).await {
-        println!("{e}");
+    if let Err(e) = execute_cli_command(&cli).await {
+        match e.downcast_ref::<reqwest::Error>() {
+            Some(error) if error.is_connect() => {
+                println!(
+                    "Cannot connect to `{}`",
+                    error
+                        .url()
+                        .and_then(|u| u.host_str())
+                        .unwrap_or(&cli.host.unwrap())
+                );
+            }
+            _ => println!("{e}"),
+        }
         return ExitCode::FAILURE;
     }
 
     ExitCode::SUCCESS
 }
 
-async fn execute_cli_command(cli: Cli) -> anyhow::Result<()> {
-    let command = cli.command.ok_or_else(|| {
+async fn execute_cli_command(cli: &Cli) -> anyhow::Result<()> {
+    let command = cli.command.as_ref().ok_or_else(|| {
         anyhow::anyhow!(
             "subcommand must be specified!\n\n{}",
             Cli::command().render_help()
@@ -37,7 +48,7 @@ async fn execute_cli_command(cli: Cli) -> anyhow::Result<()> {
     })?;
 
     // validate host input
-    let host = url::Host::parse(&cli.host.expect("host has a default set"))
+    let host = url::Host::parse(cli.host.as_ref().expect("host has a default set"))
         .map_err(|_| anyhow!("please enter a valid hostname"))?;
 
     LegacyHandler::new(host.to_string(), cli.json)
