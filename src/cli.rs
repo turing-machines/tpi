@@ -1,11 +1,10 @@
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
-/// Commandline interface that controls turing-pi's BMC. An ethernet
-/// connection to the board is required in order for this tool to function. All
-/// commands are persisted by the BMC. Please be aware that if no hostname is
-/// specified, it will try to resolve the hostname by testing a predefined sequence
-/// of options.
+/// Commandline interface that controls turing-pi's BMC. The BMC must be connected to a network
+/// that is reachable over TCP/IP in order for this tool to function. All commands are persisted by
+/// the BMC. Please be aware that if no hostname is specified, it will try to resolve the hostname
+/// by testing a predefined sequence of options.
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 #[command(propagate_version = true, arg_required_else_help = true)]
@@ -13,10 +12,9 @@ pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Commands>,
     #[arg(
-        help = "Optional turing-pi host to connect to. Host will be determind given the following order:
-1. Explicitly passed via the Cli
+        help = "Optional Turing-pi host to connect to. Host will be determind given the following order:
+1. Explicitly passed via the CLI
 2. Using hostname 'turing-pi.local'
-3. First host to respond to redfish service discovery
 "
     )]
     #[arg(default_value = "turingpi.local", long, global = true)]
@@ -29,18 +27,18 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
-    /// Power or reset specific nodes.
+    /// Power on/off or reset specific nodes.
     Power(PowerArgs),
     /// Change the USB device/host configuration. The USB-bus can only be routed to one
-    /// node simultaniously.
+    /// node simultaneously.
     Usb(UsbArgs),
     /// Upgrade the firmware of the BMC
     Firmware(FirmwareArgs),
     /// Flash a given node
     Flash(FlashArgs),
-    /// configure the on-board ethernet switch.
+    /// configure the on-board Ethernet switch.
     Eth(EthArgs),
-    /// [deprecated] forward a uart command or get a line from the serial.
+    /// Read or write over UART
     Uart(UartArgs),
 }
 
@@ -67,7 +65,7 @@ pub enum PowerCmd {
 
 #[derive(Args, Clone)]
 pub struct EthArgs {
-    /// reset ethernet switch
+    /// Reset ethernet switch
     #[arg(short, long)]
     pub reset: bool,
 }
