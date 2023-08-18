@@ -1,0 +1,61 @@
+name: Release build
+run-name: Release pipeline by @${{ github.actor }}
+on: push
+#on:
+#  push:
+#    tags:
+#      - '[0-9]+.[0-9]+.[0-9]+'
+jobs:
+#  pkgbuild:
+#    runs-on: ubuntu-latest
+#    steps:
+#      - uses: actions/checkout@v2
+#      - uses: actions-rs/toolchain@v1
+#        with:
+#          toolchain: stable
+#      - uses: actions-rs/cargo@v1
+#        with:
+#          command: check
+#      - run: mv ./target/*/build/tpi-*/out/PKGBUILD .
+#      - name: Validate package
+#        uses: hapakaien/archlinux-package-action@v2
+#        with:
+#          flags: ''
+#          namcap: false
+#          updpkgsums: true
+#          srcinfo: true
+#      - name: archive
+#        uses: actions/upload-artifact@v3
+#        with:
+#          name: 'PKGBUILD'
+#          path: |
+#            PKGBUILD
+#            .SRCINFO
+   
+  pkgcommit:
+#    needs: pkgbuild
+    runs-on: ubuntu-latest
+    steps:
+      - uses: webfactory/ssh-agent@v0.8.0
+        with:
+          ssh-private-key: ${{ secrets.AUR_DEPLOY_KEY }}
+      - name: checkout AUR repo
+        run: |
+          git config --global user.email "sven@turingpi.com"
+          git config --global user.name "Sven Rademakers"
+          git init
+      - run: git remote add origin ssh://aur@aur.archlinux.org/tpi.git
+      - run: git fetch
+      - run: git pull origin
+      - name: download archive
+        uses: actions/download-artifact@v3
+        with:
+          name: 'PKGBUILD'
+          path: tpi
+      - name: "update AUR repository with ${{ github.ref_name }}"
+        run: |
+          cd tpi
+          git add PKGBUILD .SRCINFO
+          git commit -m "update to ${{ github.ref_name }} release"
+          git push
+  
