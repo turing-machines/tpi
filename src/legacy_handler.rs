@@ -125,11 +125,19 @@ impl LegacyHandler {
 
     async fn handle_flash(&mut self, args: &FlashArgs) -> anyhow::Result<Option<Form>> {
         let mut serializer = self.url.query_pairs_mut();
+
+        #[cfg(feature = "local-only")]
+        {
+            serializer.append_pair("file", &args.image_path.to_string_lossy());
+            return Ok(None);
+        }
+
         serializer
             .append_pair("opt", "set")
             .append_pair("type", "flash")
             .append_pair("node", &(args.node - 1).to_string());
 
+        #[cfg(not(feature = "local-only"))]
         if args.local {
             serializer.append_pair("file", &args.image_path.to_string_lossy());
             Ok(None)

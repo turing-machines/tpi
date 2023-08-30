@@ -11,6 +11,7 @@ use std::path::PathBuf;
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Commands>,
+    #[cfg(not(feature = "local-only"))]
     #[arg(
         help = "Optional Turing-pi host to connect to. Host will be determind given the following order:
 1. Explicitly passed via the CLI
@@ -110,6 +111,7 @@ pub struct FirmwareArgs {
 #[group(required = true)]
 pub struct FlashArgs {
     /// Update a node with an image local on the disk.
+    #[cfg(not(feature = "local-only"))]
     #[arg(short, long)]
     pub local: bool,
     /// Update a node with the given image.
