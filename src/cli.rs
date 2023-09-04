@@ -1,6 +1,11 @@
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
+#[cfg(not(feature = "local-only"))]
+const DEFAULT_HOST_NAME: &str = "turingpi.local";
+#[cfg(feature = "local-only")]
+const DEFAULT_HOST_NAME: &str = "127.0.0.1";
+
 /// Commandline interface that controls turing-pi's BMC. The BMC must be connected to a network
 /// that is reachable over TCP/IP in order for this tool to function. All commands are persisted by
 /// the BMC. Please be aware that if no hostname is specified, it will try to resolve the hostname
@@ -11,14 +16,13 @@ use std::path::PathBuf;
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Commands>,
-    #[cfg(not(feature = "local-only"))]
     #[arg(
         help = "Optional Turing-pi host to connect to. Host will be determind given the following order:
 1. Explicitly passed via the CLI
 2. Using hostname 'turing-pi.local'
 "
     )]
-    #[arg(default_value = "turingpi.local", long, global = true)]
+    #[arg(default_value = DEFAULT_HOST_NAME, long, global = true)]
     pub host: Option<String>,
     #[arg(long, help = "print results formatted as json")]
     pub json: bool,

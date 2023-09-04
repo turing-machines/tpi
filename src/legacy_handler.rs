@@ -3,7 +3,6 @@ use crate::cli::{FlashArgs, UsbCmd};
 use anyhow::{bail, Context};
 use anyhow::{ensure, Ok};
 use bytes::BytesMut;
-use reqwest::header::{CONTENT_LENGTH, CONTENT_TYPE};
 use reqwest::{Client, Method, RequestBuilder};
 use reqwest::{ClientBuilder, Request};
 use tokio::fs::OpenOptions;
@@ -11,7 +10,7 @@ use tokio::io::AsyncReadExt;
 use tokio::sync::mpsc::channel;
 use url::Url;
 
-const BUFFER_SIZE: usize = 8 * 1024;
+const DEFAULT_FLOW_CONRTOL_WINDOW_SIZE: u64 = 65535;
 
 type ResponsePrinter = fn(&serde_json::Value);
 
@@ -23,9 +22,14 @@ pub struct LegacyHandler {
 }
 
 impl LegacyHandler {
-    pub async fn new(host: String, json: bool) -> anyhow::Result<Self> {
+    fn url_from_host(host: String) -> anyhow::Result<Url> {
         let mut url = Url::parse(&format!("http://{}", host))?;
         url.set_path("api/bmc");
+        Ok(url)
+    }
+
+    pub async fn new(host: String, json: bool) -> anyhow::Result<Self> {
+        let url = Self::url_from_host(host)?;
         Ok(Self {
             request: Request::new(Method::GET, url),
             response_printer: None,
@@ -148,7 +152,7 @@ impl LegacyHandler {
         self.skip_request = true;
 
         let mut file = OpenOptions::new().read(true).open(&args.image_path).await?;
-        let file_size = file.metadata().await?.len() as usize;
+        let file_size = file.metadata().await?.len();
         let file_name = args
             .image_path
             .file_name()
@@ -165,28 +169,35 @@ impl LegacyHandler {
             .append_pair("length", &file_size.to_string())
             .append_pair("node", &(args.node - 1).to_string());
 
-        let response = Client::new()
-            .execute(self.request.try_clone().unwrap())
-            .await
-            .context("flash request")?;
+        let client = ClientBuilder::new().gzip(true).build()?;
+
+        let response =
+            RequestBuilder::from_parts(client.clone(), self.request.try_clone().unwrap())
+                // .version(Version::HTTP_2)
+                .send()
+                .await
+                .context("flash request")?;
 
         if !response.status().is_success() {
             bail!("could not execute flashing :{}", response.text().await?);
         }
 
-        let (sender, mut receiver) = channel::<bytes::Bytes>(256);
+        let (sender, mut receiver) =
+            channel::<bytes::Bytes>(DEFAULT_FLOW_CONRTOL_WINDOW_SIZE as usize);
 
         let read_task = async move {
             let mut bytes_read = 0;
             while bytes_read < file_size {
-                let read_len = BUFFER_SIZE.min(file_size - bytes_read);
+                let read_len: usize = DEFAULT_FLOW_CONRTOL_WINDOW_SIZE
+                    .min(file_size - bytes_read)
+                    .try_into()?;
                 let mut buffer = BytesMut::zeroed(read_len);
                 let read = file.read(&mut buffer).await?;
                 if 0 == read {
                     // end_of_file
                     break;
                 }
-                bytes_read += read;
+                bytes_read += read as u64;
                 buffer.truncate(read);
                 sender.send(buffer.into()).await?;
             }
@@ -194,14 +205,19 @@ impl LegacyHandler {
         };
 
         let send_task = async move {
-            let client = ClientBuilder::new().gzip(true).build()?;
+            // try to keep the additional header sizes as low as possible within
+            // the constrains of the chosen legacy api format (with queries).
+            let mut url = Self::url_from_host(self.request.url().host().unwrap().to_string())?;
+            url.query_pairs_mut()
+                .append_pair("opt", "set")
+                .append_pair("type", "flash");
+
             while let Some(bytes) = receiver.recv().await {
                 let rsp = RequestBuilder::from_parts(
                     client.clone(),
-                    Request::new(Method::POST, self.request.url().clone()),
+                    Request::new(Method::POST, url.clone()),
                 )
-                .header(CONTENT_TYPE, "application/octet-stream")
-                .header(CONTENT_LENGTH, bytes.len())
+                // .version(Version::HTTP_2)
                 .body(bytes)
                 .send()
                 .await?;
@@ -213,6 +229,12 @@ impl LegacyHandler {
             Ok(())
         };
 
+        // Sending task runs decoupled from the reading task for 2 reasons:
+        // * To spend as much time as possible sending data over the tcp
+        // socket.
+        // * Buffering of data smooths out any hick ups in reading or sending
+        // data. This comes with a small memory penalty, tune [BUFFER_SIZE] if
+        // your target platform is memory constrained.
         tokio::try_join!(read_task, send_task).map(|_| ())
     }
 

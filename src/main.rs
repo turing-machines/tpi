@@ -39,10 +39,6 @@ async fn execute_cli_command(cli: &Cli) -> anyhow::Result<()> {
         )
     })?;
 
-    // validate host input
-    #[cfg(feature = "local-only")]
-    let host = url::Host::parse("localhost").unwrap();
-    #[cfg(not(feature = "local-only"))]
     let host = url::Host::parse(cli.host.as_ref().expect("host has a default set"))
         .map_err(|_| anyhow::anyhow!("please enter a valid hostname"))?;
 
