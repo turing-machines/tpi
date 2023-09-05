@@ -12,7 +12,7 @@ use url::Url;
 
 const DEFAULT_FLOW_CONRTOL_WINDOW_SIZE: u64 = 65535;
 
-type ResponsePrinter = fn(&serde_json::Value);
+type ResponsePrinter = fn(&serde_json::Value) -> anyhow::Result<()>;
 
 pub struct LegacyHandler {
     request: Request,
@@ -61,8 +61,12 @@ impl LegacyHandler {
         let status = response.status();
         if !status.is_success() {
             bail!(
-                "request unsuccessful: {}",
-                status.canonical_reason().unwrap_or("unknown reason")
+                "{}:\n{}",
+                status.canonical_reason().unwrap_or("unknown reason"),
+                response
+                    .text()
+                    .await
+                    .unwrap_or("error parsing server response".to_string())
             );
         }
 
@@ -79,14 +83,19 @@ impl LegacyHandler {
         body.get("response")
             .ok_or(anyhow::anyhow!("expected 'reponse' key in json payload"))
             .map(|response| {
-                self.response_printer.map_or_else(
-                    || {
-                        // In this case there is no printer set, fallback on
-                        // printing the http response body as text.
-                        println!("{}", response);
-                    },
-                    |f| f(response),
-                )
+                let extracted = &response.as_array().unwrap()[0];
+                let default_print = || {
+                    // In this case there is no printer set, fallback on
+                    // printing the http response body as text.
+                    println!("{}", extracted);
+                };
+
+                self.response_printer.map_or_else(default_print, |f| {
+                    if let Err(e) = f(&extracted) {
+                        default_print();
+                        println!("{}", e);
+                    }
+                })
             })
     }
 
@@ -107,6 +116,7 @@ impl LegacyHandler {
                 .append_pair("type", "uart")
                 .append_pair("node", &(args.node - 1).to_string())
                 .append_pair("cmd", args.cmd.as_ref().unwrap());
+            self.response_printer = Some(result_printer);
         }
         Ok(())
     }
@@ -122,6 +132,8 @@ impl LegacyHandler {
         } else {
             bail!("eth subcommand called without any actions");
         }
+
+        self.response_printer = Some(result_printer);
         Ok(())
     }
 
@@ -248,6 +260,7 @@ impl LegacyHandler {
             serializer
                 .append_pair("opt", "get")
                 .append_pair("type", "usb");
+            self.response_printer = Some(print_usb_status);
             return Ok(());
         }
 
@@ -265,6 +278,8 @@ impl LegacyHandler {
         if args.usb_boot {
             serializer.append_pair("boot_pin", "1");
         }
+
+        self.response_printer = Some(result_printer);
         Ok(())
     }
 
@@ -274,6 +289,7 @@ impl LegacyHandler {
             serializer
                 .append_pair("opt", "get")
                 .append_pair("type", "power");
+            self.response_printer = Some(print_power_status_nodes);
             return Ok(());
         } else if args.cmd == PowerCmd::Reset {
             ensure!(args.node.is_some(), "`--node` argument must be set.");
@@ -281,6 +297,7 @@ impl LegacyHandler {
                 .append_pair("opt", "set")
                 .append_pair("type", "reset")
                 .append_pair("node", &args.node.unwrap().to_string());
+            self.response_printer = Some(result_printer);
             return Ok(());
         }
 
@@ -298,6 +315,49 @@ impl LegacyHandler {
             serializer.append_pair("node3", on_bit);
             serializer.append_pair("node4", on_bit);
         }
+        self.response_printer = Some(result_printer);
         Ok(())
     }
+}
+
+fn print_power_status_nodes(map: &serde_json::Value) -> anyhow::Result<()> {
+    let results = map
+        .get("result")
+        .context("api error")?
+        .as_array()
+        .context("api error")?[0]
+        .as_object()
+        .context("response parse error")?;
+
+    for (key, value) in results {
+        let number = value.as_str().context("api error")?.parse::<u8>()?;
+        let status = if number == 1 { "On" } else { "off" };
+        println!("{}: {}", key, status);
+    }
+
+    Ok(())
+}
+
+fn result_printer(result: &serde_json::Value) -> anyhow::Result<()> {
+    let res = result.get("result").context("api error")?;
+    println!("{}", res.as_str().context("api error")?);
+    Ok(())
+}
+
+fn print_usb_status(map: &serde_json::Value) -> anyhow::Result<()> {
+    let results = map
+        .get("result")
+        .context("api error")?
+        .as_array()
+        .context("api error")?[0]
+        .as_object()
+        .context("response parse error")?;
+
+    println!(
+        "Usb bus is routed to {} and acting as a USB {}",
+        results["node"].as_str().unwrap().to_lowercase(),
+        results["mode"].as_str().unwrap().to_lowercase()
+    );
+
+    Ok(())
 }

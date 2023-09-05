@@ -16,15 +16,11 @@ const DEFAULT_HOST_NAME: &str = "127.0.0.1";
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Commands>,
-    #[arg(
-        help = "Optional Turing-pi host to connect to. Host will be determind given the following order:
-1. Explicitly passed via the CLI
-2. Using hostname 'turing-pi.local'
-"
-    )]
+    /// Specify the Turing-pi host to connect to. Note: ipv6 addresses must be wrapped in square
+    /// brackets e.g. `[::1]`
     #[arg(default_value = DEFAULT_HOST_NAME, long, global = true)]
     pub host: Option<String>,
-    #[arg(long, help = "print results formatted as json")]
+    #[arg(long, global = true, help = "print results formatted as json")]
     pub json: bool,
     #[arg(short, name = "gen completion", exclusive = true)]
     pub gencompletion: Option<clap_complete::shells::Shell>,
@@ -33,17 +29,23 @@ pub struct Cli {
 #[derive(Subcommand)]
 pub enum Commands {
     /// Power on/off or reset specific nodes.
+    #[command(arg_required_else_help = true)]
     Power(PowerArgs),
     /// Change the USB device/host configuration. The USB-bus can only be routed to one
     /// node simultaneously.
+    #[command(arg_required_else_help = true)]
     Usb(UsbArgs),
     /// Upgrade the firmware of the BMC
+    #[command(arg_required_else_help = true)]
     Firmware(FirmwareArgs),
     /// Flash a given node
+    #[command(arg_required_else_help = true)]
     Flash(FlashArgs),
-    /// configure the on-board Ethernet switch.
+    /// Configure the on-board Ethernet switch.
+    #[command(arg_required_else_help = true)]
     Eth(EthArgs),
     /// Read or write over UART
+    #[command(arg_required_else_help = true)]
     Uart(UartArgs),
 }
 

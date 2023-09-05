@@ -35,7 +35,7 @@ async fn execute_cli_command(cli: &Cli) -> anyhow::Result<()> {
     let command = cli.command.as_ref().ok_or_else(|| {
         anyhow::anyhow!(
             "subcommand must be specified!\n\n{}",
-            Cli::command().render_help()
+            Cli::command().render_long_help()
         )
     })?;
 
