@@ -1,5 +1,8 @@
+use std::str::from_utf8;
+
 use crate::cli::{Commands, EthArgs, FirmwareArgs, GetSet, PowerArgs, PowerCmd, UartArgs, UsbArgs};
 use crate::cli::{FlashArgs, UsbCmd};
+use crate::utils::{ProgressPrinter, PROGRESS_REPORT_PERCENT};
 use anyhow::{bail, Context};
 use anyhow::{ensure, Ok};
 use bytes::BytesMut;
@@ -8,9 +11,9 @@ use reqwest::{ClientBuilder, Request};
 use tokio::fs::OpenOptions;
 use tokio::io::AsyncReadExt;
 use tokio::sync::mpsc::channel;
+use tokio::time::Instant;
 use url::Url;
-
-const DEFAULT_FLOW_CONRTOL_WINDOW_SIZE: u64 = 65535;
+const DEFAULT_FLOW_CONTROL_WINDOW_SIZE: u64 = 65535;
 
 type ResponsePrinter = fn(&serde_json::Value) -> anyhow::Result<()>;
 
@@ -39,7 +42,7 @@ impl LegacyHandler {
     }
 
     /// Handler for CLI commands. Responses are printed to stdout and need to be formatted
-    /// using the json format with a key `response`.
+    /// using the JSON format with a key `response`.
     pub async fn handle_cmd(mut self, command: &Commands) -> anyhow::Result<()> {
         match command {
             Commands::Power(args) => self.handle_power_nodes(args)?,
@@ -59,21 +62,16 @@ impl LegacyHandler {
             .await
             .context("http request error")?;
         let status = response.status();
-        if !status.is_success() {
-            bail!(
+        let bytes = response.bytes().await?;
+
+        let body: serde_json::Value = match serde_json::from_slice(&bytes) {
+            core::result::Result::Ok(b) => b,
+            Err(_) => bail!(
                 "{}:\n{}",
                 status.canonical_reason().unwrap_or("unknown reason"),
-                response
-                    .text()
-                    .await
-                    .unwrap_or("error parsing server response".to_string())
-            );
-        }
-
-        let body = response
-            .json::<serde_json::Value>()
-            .await
-            .context("json respones parse error")?;
+                from_utf8(&bytes).unwrap_or("error parsing server response")
+            ),
+        };
 
         if self.json {
             println!("{}", &body.to_string());
@@ -81,7 +79,7 @@ impl LegacyHandler {
         }
 
         body.get("response")
-            .ok_or(anyhow::anyhow!("expected 'reponse' key in json payload"))
+            .ok_or(anyhow::anyhow!("expected 'reponse' key in JSON payload"))
             .map(|response| {
                 let extracted = &response.as_array().unwrap()[0];
                 let default_print = || {
@@ -91,7 +89,7 @@ impl LegacyHandler {
                 };
 
                 self.response_printer.map_or_else(default_print, |f| {
-                    if let Err(e) = f(&extracted) {
+                    if let Err(e) = f(extracted) {
                         default_print();
                         println!("{}", e);
                     }
@@ -172,6 +170,8 @@ impl LegacyHandler {
             .to_string_lossy()
             .to_string();
 
+        println!("request flashing of {file_name} to node {}", args.node);
+
         self.request
             .url_mut()
             .query_pairs_mut()
@@ -191,16 +191,16 @@ impl LegacyHandler {
                 .context("flash request")?;
 
         if !response.status().is_success() {
-            bail!("could not execute flashing :{}", response.text().await?);
+            bail!("could not execute flashing: {}", response.text().await?);
         }
 
-        let (sender, mut receiver) =
-            channel::<bytes::Bytes>(DEFAULT_FLOW_CONRTOL_WINDOW_SIZE as usize);
+        println!("started transfer of {} MiB ..", file_size / 1024 / 1024);
 
+        let (sender, mut receiver) = channel::<bytes::Bytes>(256);
         let read_task = async move {
             let mut bytes_read = 0;
             while bytes_read < file_size {
-                let read_len: usize = DEFAULT_FLOW_CONRTOL_WINDOW_SIZE
+                let read_len: usize = DEFAULT_FLOW_CONTROL_WINDOW_SIZE
                     .min(file_size - bytes_read)
                     .try_into()?;
                 let mut buffer = BytesMut::zeroed(read_len);
@@ -209,6 +209,7 @@ impl LegacyHandler {
                     // end_of_file
                     break;
                 }
+
                 bytes_read += read as u64;
                 buffer.truncate(read);
                 sender.send(buffer.into()).await?;
@@ -218,13 +219,17 @@ impl LegacyHandler {
 
         let send_task = async move {
             // try to keep the additional header sizes as low as possible within
-            // the constrains of the chosen legacy api format (with queries).
+            // the constrains of the chosen legacy API format (with queries).
             let mut url = Self::url_from_host(self.request.url().host().unwrap().to_string())?;
             url.query_pairs_mut()
                 .append_pair("opt", "set")
                 .append_pair("type", "flash");
 
+            let mut progress_printer =
+                ProgressPrinter::new(file_size, Instant::now(), PROGRESS_REPORT_PERCENT);
+
             while let Some(bytes) = receiver.recv().await {
+                progress_printer.update_progress(bytes.len());
                 let rsp = RequestBuilder::from_parts(
                     client.clone(),
                     Request::new(Method::POST, url.clone()),
@@ -242,7 +247,7 @@ impl LegacyHandler {
         };
 
         // Sending task runs decoupled from the reading task for 2 reasons:
-        // * To spend as much time as possible sending data over the tcp
+        // * To spend as much time as possible sending data over the TCP
         // socket.
         // * Buffering of data smooths out any hick ups in reading or sending
         // data. This comes with a small memory penalty, tune [BUFFER_SIZE] if
@@ -323,14 +328,14 @@ impl LegacyHandler {
 fn print_power_status_nodes(map: &serde_json::Value) -> anyhow::Result<()> {
     let results = map
         .get("result")
-        .context("api error")?
+        .context("API error")?
         .as_array()
-        .context("api error")?[0]
+        .context("API error")?[0]
         .as_object()
         .context("response parse error")?;
 
     for (key, value) in results {
-        let number = value.as_str().context("api error")?.parse::<u8>()?;
+        let number = value.as_str().context("API error")?.parse::<u8>()?;
         let status = if number == 1 { "On" } else { "off" };
         println!("{}: {}", key, status);
     }
@@ -339,24 +344,30 @@ fn print_power_status_nodes(map: &serde_json::Value) -> anyhow::Result<()> {
 }
 
 fn result_printer(result: &serde_json::Value) -> anyhow::Result<()> {
-    let res = result.get("result").context("api error")?;
-    println!("{}", res.as_str().context("api error")?);
+    let res = result.get("result").context("API error")?;
+    println!("{}", res.as_str().context("API error")?);
     Ok(())
 }
 
 fn print_usb_status(map: &serde_json::Value) -> anyhow::Result<()> {
     let results = map
         .get("result")
-        .context("api error")?
+        .context("API error")?
         .as_array()
-        .context("api error")?[0]
+        .context("API error")?[0]
         .as_object()
         .context("response parse error")?;
 
     println!(
-        "Usb bus is routed to {} and acting as a USB {}",
-        results["node"].as_str().unwrap().to_lowercase(),
-        results["mode"].as_str().unwrap().to_lowercase()
+        "USB-bus is routed to {} and acting as a USB {}",
+        results["node"]
+            .as_str()
+            .expect("API error: Expected `node` attribute")
+            .to_lowercase(),
+        results["mode"]
+            .as_str()
+            .expect("API error: Expected `mode` attribute")
+            .to_lowercase()
     );
 
     Ok(())

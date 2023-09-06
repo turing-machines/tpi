@@ -16,11 +16,11 @@ const DEFAULT_HOST_NAME: &str = "127.0.0.1";
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Commands>,
-    /// Specify the Turing-pi host to connect to. Note: ipv6 addresses must be wrapped in square
+    /// Specify the Turing-pi host to connect to. Note: IPv6 addresses must be wrapped in square
     /// brackets e.g. `[::1]`
     #[arg(default_value = DEFAULT_HOST_NAME, long, global = true)]
     pub host: Option<String>,
-    #[arg(long, global = true, help = "print results formatted as json")]
+    #[arg(long, global = true, help = "print results formatted as JSON")]
     pub json: bool,
     #[arg(short, name = "gen completion", exclusive = true)]
     pub gencompletion: Option<clap_complete::shells::Shell>,
@@ -94,7 +94,7 @@ pub struct UsbArgs {
     /// specify which mode to set the given node in.
     #[arg(short, long)]
     pub mode: UsbCmd,
-    // /// instead of USB-A, route usb-bus to the BMC chip.
+    // /// instead of USB-A, route USB-bus to the BMC chip.
     #[arg(short, long)]
     pub bmc: bool,
     /// Set the boot pin, referred to as 'rpiboot pin' high
