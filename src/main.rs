@@ -1,7 +1,7 @@
 mod cli;
 mod legacy_handler;
+mod utils;
 use crate::legacy_handler::LegacyHandler;
-use anyhow::anyhow;
 use clap::{CommandFactory, Parser};
 use clap_complete::generate;
 use cli::Cli;
@@ -36,13 +36,12 @@ async fn execute_cli_command(cli: &Cli) -> anyhow::Result<()> {
     let command = cli.command.as_ref().ok_or_else(|| {
         anyhow::anyhow!(
             "subcommand must be specified!\n\n{}",
-            Cli::command().render_help()
+            Cli::command().render_long_help()
         )
     })?;
 
-    // validate host input
     let host = url::Host::parse(cli.host.as_ref().expect("host has a default set"))
-        .map_err(|_| anyhow!("please enter a valid hostname"))?;
+        .map_err(|_| anyhow::anyhow!("please enter a valid hostname"))?;
 
     LegacyHandler::new(host.to_string(), cli.json)
         .await?

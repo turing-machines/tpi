@@ -1,6 +1,11 @@
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
+#[cfg(not(feature = "local-only"))]
+const DEFAULT_HOST_NAME: &str = "turingpi.local";
+#[cfg(feature = "local-only")]
+const DEFAULT_HOST_NAME: &str = "127.0.0.1";
+
 /// Commandline interface that controls turing-pi's BMC. The BMC must be connected to a network
 /// that is reachable over TCP/IP in order for this tool to function. All commands are persisted by
 /// the BMC. Please be aware that if no hostname is specified, it will try to resolve the hostname
@@ -11,15 +16,11 @@ use std::path::PathBuf;
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Commands>,
-    #[arg(
-        help = "Optional Turing-pi host to connect to. Host will be determind given the following order:
-1. Explicitly passed via the CLI
-2. Using hostname 'turing-pi.local'
-"
-    )]
-    #[arg(default_value = "turingpi.local", long, global = true)]
+    /// Specify the Turing-pi host to connect to. Note: IPv6 addresses must be wrapped in square
+    /// brackets e.g. `[::1]`
+    #[arg(default_value = DEFAULT_HOST_NAME, long, global = true)]
     pub host: Option<String>,
-    #[arg(long, help = "print results formatted as json")]
+    #[arg(long, global = true, help = "print results formatted as JSON")]
     pub json: bool,
     #[arg(short, name = "gen completion", exclusive = true)]
     pub gencompletion: Option<clap_complete::shells::Shell>,
@@ -28,17 +29,23 @@ pub struct Cli {
 #[derive(Subcommand)]
 pub enum Commands {
     /// Power on/off or reset specific nodes.
+    #[command(arg_required_else_help = true)]
     Power(PowerArgs),
     /// Change the USB device/host configuration. The USB-bus can only be routed to one
     /// node simultaneously.
+    #[command(arg_required_else_help = true)]
     Usb(UsbArgs),
     /// Upgrade the firmware of the BMC
+    #[command(arg_required_else_help = true)]
     Firmware(FirmwareArgs),
     /// Flash a given node
+    #[command(arg_required_else_help = true)]
     Flash(FlashArgs),
-    /// configure the on-board Ethernet switch.
+    /// Configure the on-board Ethernet switch.
+    #[command(arg_required_else_help = true)]
     Eth(EthArgs),
     /// Read or write over UART
+    #[command(arg_required_else_help = true)]
     Uart(UartArgs),
 }
 
@@ -87,7 +94,7 @@ pub struct UsbArgs {
     /// specify which mode to set the given node in.
     #[arg(short, long)]
     pub mode: UsbCmd,
-    // /// instead of USB-A, route usb-bus to the BMC chip.
+    // /// instead of USB-A, route USB-bus to the BMC chip.
     #[arg(short, long)]
     pub bmc: bool,
     /// Set the boot pin, referred to as 'rpiboot pin' high
@@ -110,6 +117,7 @@ pub struct FirmwareArgs {
 #[group(required = true)]
 pub struct FlashArgs {
     /// Update a node with an image local on the disk.
+    #[cfg(not(feature = "local-only"))]
     #[arg(short, long)]
     pub local: bool,
     /// Update a node with the given image.
