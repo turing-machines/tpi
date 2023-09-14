@@ -6,7 +6,7 @@ use crate::utils::{ProgressPrinter, PROGRESS_REPORT_PERCENT};
 use anyhow::{bail, Context};
 use anyhow::{ensure, Ok};
 use bytes::BytesMut;
-use reqwest::{Client, Method, RequestBuilder};
+use reqwest::{Client, Method, RequestBuilder, Version};
 use reqwest::{ClientBuilder, Request};
 use tokio::fs::OpenOptions;
 use tokio::io::AsyncReadExt;
@@ -19,6 +19,7 @@ type ResponsePrinter = fn(&serde_json::Value) -> anyhow::Result<()>;
 
 pub struct LegacyHandler {
     request: Request,
+    client: Client,
     response_printer: Option<ResponsePrinter>,
     json: bool,
     skip_request: bool,
@@ -26,15 +27,23 @@ pub struct LegacyHandler {
 
 impl LegacyHandler {
     fn url_from_host(host: String) -> anyhow::Result<Url> {
-        let mut url = Url::parse(&format!("http://{}", host))?;
+        let mut url = Url::parse(&format!("https://{}", host))?;
         url.set_path("api/bmc");
         Ok(url)
     }
 
     pub async fn new(host: String, json: bool) -> anyhow::Result<Self> {
         let url = Self::url_from_host(host)?;
+        let client = ClientBuilder::new()
+            .gzip(true)
+            .danger_accept_invalid_certs(true)
+            .http2_prior_knowledge()
+            .https_only(true)
+            .use_rustls_tls()
+            .build()?;
         Ok(Self {
             request: Request::new(Method::GET, url),
+            client,
             response_printer: None,
             json,
             skip_request: false,
@@ -57,7 +66,8 @@ impl LegacyHandler {
             return Ok(());
         }
 
-        let response = Client::new()
+        let response = self
+            .client
             .execute(self.request)
             .await
             .context("http request error")?;
@@ -161,7 +171,12 @@ impl LegacyHandler {
         // alternative flow here.
         self.skip_request = true;
 
-        let mut file = OpenOptions::new().read(true).open(&args.image_path).await?;
+        let mut file = OpenOptions::new()
+            .read(true)
+            .open(&args.image_path)
+            .await
+            .with_context(|| format!("cannot open file {}", args.image_path.to_string_lossy()))?;
+
         let file_size = file.metadata().await?.len();
         let file_name = args
             .image_path
@@ -181,11 +196,9 @@ impl LegacyHandler {
             .append_pair("length", &file_size.to_string())
             .append_pair("node", &(args.node - 1).to_string());
 
-        let client = ClientBuilder::new().gzip(true).build()?;
-
         let response =
-            RequestBuilder::from_parts(client.clone(), self.request.try_clone().unwrap())
-                // .version(Version::HTTP_2)
+            RequestBuilder::from_parts(self.client.clone(), self.request.try_clone().unwrap())
+                .version(Version::HTTP_2)
                 .send()
                 .await
                 .context("flash request")?;
@@ -231,10 +244,10 @@ impl LegacyHandler {
             while let Some(bytes) = receiver.recv().await {
                 progress_printer.update_progress(bytes.len());
                 let rsp = RequestBuilder::from_parts(
-                    client.clone(),
+                    self.client.clone(),
                     Request::new(Method::POST, url.clone()),
                 )
-                // .version(Version::HTTP_2)
+                .version(Version::HTTP_2)
                 .body(bytes)
                 .send()
                 .await?;
