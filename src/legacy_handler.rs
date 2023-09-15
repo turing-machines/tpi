@@ -1,5 +1,6 @@
 use crate::cli::{
-    ApiVersion, Commands, EthArgs, FirmwareArgs, GetSet, PowerArgs, PowerCmd, UartArgs, UsbArgs,
+    AdvancedArgs, ApiVersion, Commands, EthArgs, FirmwareArgs, GetSet, PowerArgs, PowerCmd,
+    UartArgs, UsbArgs,
 };
 use crate::cli::{FlashArgs, UsbCmd};
 use crate::utils::{ProgressPrinter, PROGRESS_REPORT_PERCENT};
@@ -74,6 +75,7 @@ impl LegacyHandler {
             Commands::Flash(args) => self.handle_flash(args).await?,
             Commands::Eth(args) => self.handle_eth(args)?,
             Commands::Uart(args) => self.handle_uart(args)?,
+            Commands::Advanced(args) => self.handle_advanced(args).await?,
         }
 
         if self.skip_request {
@@ -356,10 +358,6 @@ impl LegacyHandler {
             serializer.append_pair("mode", "1");
         }
 
-        if args.usb_boot {
-            serializer.append_pair("boot_pin", "1");
-        }
-
         self.response_printer = Some(result_printer);
         Ok(())
     }
@@ -397,6 +395,71 @@ impl LegacyHandler {
             serializer.append_pair("node4", on_bit);
         }
         self.response_printer = Some(result_printer);
+        Ok(())
+    }
+
+    async fn handle_advanced(&mut self, args: &AdvancedArgs) -> anyhow::Result<()> {
+        match args.mode {
+            crate::cli::ModeCmd::Normal => {
+                self.request
+                    .url_mut()
+                    .query_pairs_mut()
+                    .append_pair("opt", "set")
+                    .append_pair("type", "clear_usb_boot")
+                    .append_pair("node", &args.node.to_string());
+                let response = RequestBuilder::from_parts(
+                    self.client.clone(),
+                    self.request.try_clone().unwrap(),
+                )
+                .send()
+                .await?;
+
+                if !response.status().is_success() {
+                    bail!("could not execute Normal mode: {}", response.text().await?);
+                }
+
+                return self.handle_power_nodes(&PowerArgs {
+                    cmd: PowerCmd::Reset,
+                    node: Some(args.node),
+                });
+            }
+            crate::cli::ModeCmd::Msd => {
+                self.request
+                    .url_mut()
+                    .query_pairs_mut()
+                    .append_pair("opt", "set")
+                    .append_pair("type", "node_to_msd")
+                    .append_pair("node", &args.node.to_string());
+            }
+            crate::cli::ModeCmd::Recovery => {
+                self.request
+                    .url_mut()
+                    .query_pairs_mut()
+                    .append_pair("opt", "set")
+                    .append_pair("type", "usb_boot")
+                    .append_pair("node", &args.node.to_string());
+                let response = RequestBuilder::from_parts(
+                    self.client.clone(),
+                    self.request.try_clone().unwrap(),
+                )
+                .send()
+                .await?;
+
+                if !response.status().is_success() {
+                    bail!(
+                        "could not execute Recovery mode: {}",
+                        response.text().await?
+                    );
+                }
+
+                return self.handle_power_nodes(&PowerArgs {
+                    cmd: PowerCmd::Reset,
+                    node: Some(args.node),
+                });
+            }
+        }
+        self.response_printer = Some(result_printer);
+
         Ok(())
     }
 }

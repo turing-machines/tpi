@@ -22,12 +22,12 @@ pub struct Cli {
     pub host: Option<String>,
     #[arg(long, global = true, help = "print results formatted as JSON")]
     pub json: bool,
-    #[arg(short, name = "gen completion", exclusive = true)]
-    pub gencompletion: Option<clap_complete::shells::Shell>,
-    /// Specify which version of the `bmc API` to use. Try lower the version if you are running an
-    /// older BMC firmware version.
+    /// Force which version of the BMC API to use. Try lower the version if you are running
+    /// older BMC firmware.
     #[arg(default_value = "v1-1", short, global = true)]
     pub api_version: Option<ApiVersion>,
+    #[arg(short, name = "gen completion", exclusive = true)]
+    pub gencompletion: Option<clap_complete::shells::Shell>,
 }
 
 #[derive(Subcommand)]
@@ -51,12 +51,27 @@ pub enum Commands {
     /// Read or write over UART
     #[command(arg_required_else_help = true)]
     Uart(UartArgs),
+    /// Advanced node modes
+    #[command(arg_required_else_help = true)]
+    Advanced(AdvancedArgs),
 }
 
 #[derive(ValueEnum, Clone, PartialEq)]
 pub enum GetSet {
     Get,
     Set,
+}
+
+#[derive(ValueEnum, Clone, PartialEq)]
+pub enum ModeCmd {
+    /// Clear any advanced mode
+    Normal,
+    /// reboots supported compute modules and expose its eMMC storage as a mass
+    /// storage device
+    Msd,
+    /// Setting the recovery pin high will cause the module to halt after its
+    /// respective bootROM code. A manual restart is required.
+    Recovery,
 }
 
 #[derive(ValueEnum, Clone, PartialEq)]
@@ -101,6 +116,15 @@ pub struct EthArgs {
 }
 
 #[derive(Args)]
+pub struct AdvancedArgs {
+    pub mode: ModeCmd,
+    /// [possible values: 1-4]
+    #[arg(short, long)]
+    #[arg(value_parser = clap::value_parser!(u8).range(1..5))]
+    pub node: u8,
+}
+
+#[derive(Args)]
 pub struct UartArgs {
     pub action: GetSet,
     /// [possible values: 1-4], Not specifying a node
@@ -120,9 +144,6 @@ pub struct UsbArgs {
     /// instead of USB-A, route the USB-bus to the BMC chip.
     #[arg(short, long)]
     pub bmc: bool,
-    /// Set the boot pin, referred to as 'rpiboot pin' high
-    #[arg(short, long)]
-    pub usb_boot: bool,
     /// [possible values: 1-4], Not specifying a node
     /// selects all nodes.
     #[arg(short, long)]
