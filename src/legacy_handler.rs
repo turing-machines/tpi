@@ -76,6 +76,7 @@ impl LegacyHandler {
             Commands::Eth(args) => self.handle_eth(args)?,
             Commands::Uart(args) => self.handle_uart(args)?,
             Commands::Advanced(args) => self.handle_advanced(args).await?,
+            Commands::Info => self.handle_info(),
         }
 
         if self.skip_request {
@@ -121,6 +122,16 @@ impl LegacyHandler {
                     }
                 })
             })
+    }
+
+    fn handle_info(&mut self) {
+        self.request
+            .url_mut()
+            .query_pairs_mut()
+            .append_pair("opt", "get")
+            .append_pair("type", "other");
+
+        self.response_printer = Some(info_printer);
     }
 
     fn handle_uart(&mut self, args: &UartArgs) -> anyhow::Result<()> {
@@ -485,6 +496,23 @@ fn print_power_status_nodes(map: &serde_json::Value) -> anyhow::Result<()> {
 fn result_printer(result: &serde_json::Value) -> anyhow::Result<()> {
     let res = result.get("result").context("API error")?;
     println!("{}", res.as_str().context("API error")?);
+    Ok(())
+}
+
+fn info_printer(map: &serde_json::Value) -> anyhow::Result<()> {
+    let results = map
+        .get("result")
+        .context("API error")?
+        .as_array()
+        .context("API error")?[0]
+        .as_object()
+        .context("response parse error")?;
+
+    println!("|{:-^10}|{:-^28}|", "key", "value");
+    for (key, value) in results {
+        println!(" {:<10}: {}", key, value.as_str().expect("API error"));
+    }
+    println!("|{:-^10}|{:-^28}|", "", "");
     Ok(())
 }
 

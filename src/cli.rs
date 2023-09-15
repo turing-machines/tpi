@@ -54,6 +54,8 @@ pub enum Commands {
     /// Advanced node modes
     #[command(arg_required_else_help = true)]
     Advanced(AdvancedArgs),
+    /// Print turing-pi info
+    Info,
 }
 
 #[derive(ValueEnum, Clone, PartialEq)]
