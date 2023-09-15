@@ -1,14 +1,17 @@
-use std::str::from_utf8;
-
-use crate::cli::{Commands, EthArgs, FirmwareArgs, GetSet, PowerArgs, PowerCmd, UartArgs, UsbArgs};
+use crate::cli::{
+    ApiVersion, Commands, EthArgs, FirmwareArgs, GetSet, PowerArgs, PowerCmd, UartArgs, UsbArgs,
+};
 use crate::cli::{FlashArgs, UsbCmd};
 use crate::utils::{ProgressPrinter, PROGRESS_REPORT_PERCENT};
 use anyhow::{bail, Context};
 use anyhow::{ensure, Ok};
 use bytes::BytesMut;
+use reqwest::multipart::Part;
 use reqwest::{Client, Method, RequestBuilder, Version};
 use reqwest::{ClientBuilder, Request};
-use tokio::fs::OpenOptions;
+use std::path::Path;
+use std::str::from_utf8;
+use tokio::fs::{File, OpenOptions};
 use tokio::io::AsyncReadExt;
 use tokio::sync::mpsc::channel;
 use tokio::time::Instant;
@@ -23,17 +26,21 @@ pub struct LegacyHandler {
     response_printer: Option<ResponsePrinter>,
     json: bool,
     skip_request: bool,
+    version: ApiVersion,
 }
 
 impl LegacyHandler {
-    fn url_from_host(host: String) -> anyhow::Result<Url> {
-        let mut url = Url::parse(&format!("https://{}", host))?;
+    fn url_from_host(host: String, scheme: &str) -> anyhow::Result<Url> {
+        let mut url = Url::parse(&format!("{}://{}", scheme, host))?;
         url.set_path("api/bmc");
         Ok(url)
     }
 
-    pub async fn new(host: String, json: bool) -> anyhow::Result<Self> {
-        let url = Self::url_from_host(host)?;
+    fn create_client(version: ApiVersion) -> anyhow::Result<Client> {
+        if version == ApiVersion::V1 {
+            return Ok(Client::new());
+        }
+
         let client = ClientBuilder::new()
             .gzip(true)
             .danger_accept_invalid_certs(true)
@@ -41,12 +48,19 @@ impl LegacyHandler {
             .https_only(true)
             .use_rustls_tls()
             .build()?;
+        Ok(client)
+    }
+
+    pub async fn new(host: String, json: bool, version: ApiVersion) -> anyhow::Result<Self> {
+        let url = Self::url_from_host(host, version.scheme())?;
+        let client = Self::create_client(version)?;
         Ok(Self {
             request: Request::new(Method::GET, url),
             client,
             response_printer: None,
             json,
             skip_request: false,
+            version,
         })
     }
 
@@ -145,46 +159,63 @@ impl LegacyHandler {
         Ok(())
     }
 
-    async fn handle_firmware(&mut self, _: &FirmwareArgs) -> anyhow::Result<()> {
-        bail!("`firmware` argument not implemented yet!");
+    async fn handle_firmware(&mut self, args: &FirmwareArgs) -> anyhow::Result<()> {
+        if self.version == ApiVersion::V1 {
+            // Opt out of the global request/response handler as we implement an
+            // alternative flow here.
+            self.skip_request = true;
+            let (mut file, file_name, _) = Self::open_file(&args.file).await?;
+            self.request
+                .url_mut()
+                .query_pairs_mut()
+                .append_pair("opt", "set")
+                .append_pair("type", "flash")
+                .append_pair("file", &file_name);
+            self.handle_file_upload_v1(&mut file, file_name).await
+        } else {
+            bail!("`firmware` argument not implemented yet!");
+        }
+    }
+
+    async fn open_file(path: &Path) -> anyhow::Result<(File, String, u64)> {
+        let file = OpenOptions::new()
+            .read(true)
+            .open(path)
+            .await
+            .with_context(|| format!("cannot open file {}", path.to_string_lossy()))?;
+
+        let file_size = file.metadata().await?.len();
+        let file_name = path
+            .file_name()
+            .ok_or(anyhow::anyhow!("file_name could not be extracted"))?
+            .to_string_lossy()
+            .to_string();
+        Ok((file, file_name, file_size))
     }
 
     async fn handle_flash(&mut self, args: &FlashArgs) -> anyhow::Result<()> {
-        if cfg!(feature = "local-only") {
+        let mut send_request = || {
             self.request
                 .url_mut()
                 .query_pairs_mut()
                 .append_pair("file", &args.image_path.to_string_lossy());
+        };
+
+        if cfg!(feature = "local-only") {
+            send_request();
             return Ok(());
         }
 
         #[cfg(not(feature = "local-only"))]
         if args.local {
-            self.request
-                .url_mut()
-                .query_pairs_mut()
-                .append_pair("file", &args.image_path.to_string_lossy());
+            send_request();
             return Ok(());
         }
 
         // Opt out of the global request/response handler as we implement an
         // alternative flow here.
         self.skip_request = true;
-
-        let mut file = OpenOptions::new()
-            .read(true)
-            .open(&args.image_path)
-            .await
-            .with_context(|| format!("cannot open file {}", args.image_path.to_string_lossy()))?;
-
-        let file_size = file.metadata().await?.len();
-        let file_name = args
-            .image_path
-            .file_name()
-            .ok_or(anyhow::anyhow!("file_name could not be extracted"))?
-            .to_string_lossy()
-            .to_string();
-
+        let (mut file, file_name, file_size) = Self::open_file(&args.image_path).await?;
         println!("request flashing of {file_name} to node {}", args.node);
 
         self.request
@@ -196,6 +227,35 @@ impl LegacyHandler {
             .append_pair("length", &file_size.to_string())
             .append_pair("node", &(args.node - 1).to_string());
 
+        if self.version == ApiVersion::V1 {
+            self.handle_file_upload_v1(&mut file, file_name).await
+        } else {
+            self.handle_flash_v1_1(&mut file, file_size).await
+        }
+    }
+
+    async fn handle_file_upload_v1(
+        &self,
+        file: &mut File,
+        file_name: String,
+    ) -> anyhow::Result<()> {
+        println!("Warning: large files will very likely to fail to be uploaded in version 1");
+
+        let mut bytes = Vec::new();
+        file.read_to_end(&mut bytes).await?;
+        let part = Part::stream(bytes)
+            .mime_str("application/octet-stream")?
+            .file_name(file_name);
+        let form = reqwest::multipart::Form::new().part("file", part);
+        self.client
+            .post(self.request.url().clone())
+            .multipart(form)
+            .send()
+            .await?;
+        Ok(())
+    }
+
+    async fn handle_flash_v1_1(&self, file: &mut File, file_size: u64) -> anyhow::Result<()> {
         let response =
             RequestBuilder::from_parts(self.client.clone(), self.request.try_clone().unwrap())
                 .version(Version::HTTP_2)
@@ -233,7 +293,10 @@ impl LegacyHandler {
         let send_task = async move {
             // try to keep the additional header sizes as low as possible within
             // the constrains of the chosen legacy API format (with queries).
-            let mut url = Self::url_from_host(self.request.url().host().unwrap().to_string())?;
+            let mut url = Self::url_from_host(
+                self.request.url().host().unwrap().to_string(),
+                self.version.scheme(),
+            )?;
             url.query_pairs_mut()
                 .append_pair("opt", "set")
                 .append_pair("type", "flash");

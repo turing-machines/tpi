@@ -1,4 +1,4 @@
-use clap::{Args, Parser, Subcommand, ValueEnum};
+use clap::{builder::NonEmptyStringValueParser, Args, Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
 #[cfg(not(feature = "local-only"))]
@@ -18,12 +18,16 @@ pub struct Cli {
     pub command: Option<Commands>,
     /// Specify the Turing-pi host to connect to. Note: IPv6 addresses must be wrapped in square
     /// brackets e.g. `[::1]`
-    #[arg(default_value = DEFAULT_HOST_NAME, long, global = true)]
+    #[arg(default_value = DEFAULT_HOST_NAME, value_parser = NonEmptyStringValueParser::new(), long, global = true)]
     pub host: Option<String>,
     #[arg(long, global = true, help = "print results formatted as JSON")]
     pub json: bool,
     #[arg(short, name = "gen completion", exclusive = true)]
     pub gencompletion: Option<clap_complete::shells::Shell>,
+    /// Specify which version of the `bmc API` to use. Try lower the version if you are running an
+    /// older BMC firmware version.
+    #[arg(default_value = "v1-1", short, global = true)]
+    pub api_version: Option<ApiVersion>,
 }
 
 #[derive(Subcommand)]
@@ -57,7 +61,11 @@ pub enum GetSet {
 
 #[derive(ValueEnum, Clone, PartialEq)]
 pub enum UsbCmd {
+    /// Configure the specified node as USB device. The `BMC` itself or USB-A
+    /// port is USB host
     Device,
+    /// Configure the specified node as USB Host. USB devices can be attached to
+    /// the USB-A port on the board.
     Host,
     Status,
 }
@@ -70,9 +78,24 @@ pub enum PowerCmd {
     Get,
 }
 
+#[derive(ValueEnum, Clone, Copy, PartialEq)]
+pub enum ApiVersion {
+    V1,
+    V1_1,
+}
+
+impl ApiVersion {
+    pub fn scheme(&self) -> &str {
+        match self {
+            ApiVersion::V1 => "http",
+            ApiVersion::V1_1 => "https",
+        }
+    }
+}
+
 #[derive(Args, Clone)]
 pub struct EthArgs {
-    /// Reset ethernet switch
+    /// Reset Ethernet switch
     #[arg(short, long)]
     pub reset: bool,
 }
@@ -94,7 +117,7 @@ pub struct UsbArgs {
     /// specify which mode to set the given node in.
     #[arg(short, long)]
     pub mode: UsbCmd,
-    // /// instead of USB-A, route USB-bus to the BMC chip.
+    /// instead of USB-A, route the USB-bus to the BMC chip.
     #[arg(short, long)]
     pub bmc: bool,
     /// Set the boot pin, referred to as 'rpiboot pin' high
@@ -116,15 +139,14 @@ pub struct FirmwareArgs {
 #[derive(Args, Clone)]
 #[group(required = true)]
 pub struct FlashArgs {
-    /// Update a node with an image local on the disk.
+    /// Update a node with an image local on the file-system.
     #[cfg(not(feature = "local-only"))]
     #[arg(short, long)]
     pub local: bool,
     /// Update a node with the given image.
     #[arg(short, long)]
     pub image_path: PathBuf,
-    /// [possible values: 1-4], Not specifying a node
-    /// selects all nodes.
+    /// [possible values: 1-4]
     #[arg(short, long)]
     #[arg(value_parser = clap::value_parser!(u8).range(1..5))]
     pub node: u8,
