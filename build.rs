@@ -20,7 +20,7 @@ fn generate_pgkbuild() -> io::Result<()> {
     writeln!(pkgbuild, "arch=('any')")?;
     writeln!(
         pkgbuild,
-        r"source=('{}/archive/refs/tags/{}.tar.gz')",
+        r"source=('{}/archive/refs/tags/v{}.tar.gz')",
         env!("CARGO_PKG_REPOSITORY"),
         env!("CARGO_PKG_VERSION")
     )?;
@@ -39,7 +39,7 @@ fn generate_pgkbuild() -> io::Result<()> {
         r#"build() {{
     export RUSTUP_TOOLCHAIN=stable
     export CARGO_TARGET_DIR=target
-    cd $srcdir/{} && cargo build --frozen --release --all-features
+    cd $srcdir/{} && cargo build --frozen --release 
 }}"#,
         pkg_name
     )?;
@@ -47,7 +47,7 @@ fn generate_pgkbuild() -> io::Result<()> {
         pkgbuild,
         r#"check() {{
     export RUSTUP_TOOLCHAIN=stable
-    cd $srcdir/{} && cargo test --frozen --all-features
+    cd $srcdir/{} && cargo test --frozen 
 }}"#,
         pkg_name
     )?;
