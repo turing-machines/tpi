@@ -345,10 +345,6 @@ impl LegacyHandler {
     }
 
     fn handle_usb(&mut self, args: &UsbArgs) -> anyhow::Result<()> {
-        if args.bmc {
-            bail!("--bmc argument not implemented yet!");
-        }
-
         let mut serializer = self.request.url_mut().query_pairs_mut();
         if args.mode == UsbCmd::Status {
             serializer
@@ -365,11 +361,9 @@ impl LegacyHandler {
             .append_pair("type", "usb")
             .append_pair("node", &(node - 1).to_string());
 
-        if args.mode == UsbCmd::Host {
-            serializer.append_pair("mode", "0");
-        } else {
-            serializer.append_pair("mode", "1");
-        }
+        let mut mode = if args.mode == UsbCmd::Host { 0 } else { 1 };
+        mode = mode | ((args.bmc as u8) << 1);
+        serializer.append_pair("mode", &mode.to_string());
 
         self.response_printer = Some(result_printer);
         Ok(())
@@ -527,17 +521,28 @@ fn print_usb_status(map: &serde_json::Value) -> anyhow::Result<()> {
         .as_object()
         .context("response parse error")?;
 
-    println!(
-        "USB-bus is routed to {} and acting as a USB {}",
-        results["node"]
-            .as_str()
-            .expect("API error: Expected `node` attribute")
-            .to_lowercase(),
-        results["mode"]
-            .as_str()
-            .expect("API error: Expected `mode` attribute")
-            .to_lowercase()
-    );
+    let node = results["node"]
+        .as_str()
+        .expect("API error: Expected `node` attribute")
+        .to_lowercase();
+    let mode = results["mode"]
+        .as_str()
+        .expect("API error: Expected `mode` attribute")
+        .to_lowercase();
+    let route = results["route"]
+        .as_str()
+        .expect("API error: Expected `mode` attribute")
+        .to_lowercase();
+
+    println!("{:^12}-->{:^12}", "USB Host", "USB Device");
+
+    let (host, device) = if mode == "Host" {
+        (node, route)
+    } else {
+        (route, node)
+    };
+
+    println!("{:^12}-->{:^12}", host, device);
 
     Ok(())
 }
