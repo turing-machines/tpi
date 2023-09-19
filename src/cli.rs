@@ -146,11 +146,10 @@ pub struct UsbArgs {
     /// instead of USB-A, route the USB-bus to the BMC chip.
     #[arg(short, long)]
     pub bmc: bool,
-    /// [possible values: 1-4], Not specifying a node
-    /// selects all nodes.
+    /// [possible values: 1-4]
     #[arg(short, long)]
     #[arg(value_parser = clap::value_parser!(u8).range(1..5))]
-    pub node: u8,
+    pub node: Option<u8>,
 }
 
 #[derive(Args, Clone)]

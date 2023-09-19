@@ -358,10 +358,12 @@ impl LegacyHandler {
             return Ok(());
         }
 
+        let Some(node) = args.node else { bail!("`--node` argument missing") };
+
         serializer
             .append_pair("opt", "set")
             .append_pair("type", "usb")
-            .append_pair("node", &(args.node - 1).to_string());
+            .append_pair("node", &(node - 1).to_string());
 
         if args.mode == UsbCmd::Host {
             serializer.append_pair("mode", "0");
