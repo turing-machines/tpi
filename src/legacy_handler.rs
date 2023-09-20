@@ -382,7 +382,7 @@ impl LegacyHandler {
             serializer
                 .append_pair("opt", "set")
                 .append_pair("type", "reset")
-                .append_pair("node", &args.node.unwrap().to_string());
+                .append_pair("node", &(args.node.unwrap() - 1).to_string());
             self.response_printer = Some(result_printer);
             return Ok(());
         }
@@ -413,7 +413,7 @@ impl LegacyHandler {
                     .query_pairs_mut()
                     .append_pair("opt", "set")
                     .append_pair("type", "clear_usb_boot")
-                    .append_pair("node", &args.node.to_string());
+                    .append_pair("node", &(args.node - 1).to_string());
                 let response = RequestBuilder::from_parts(
                     self.client.clone(),
                     self.request.try_clone().unwrap(),
@@ -436,7 +436,7 @@ impl LegacyHandler {
                     .query_pairs_mut()
                     .append_pair("opt", "set")
                     .append_pair("type", "node_to_msd")
-                    .append_pair("node", &args.node.to_string());
+                    .append_pair("node", &(args.node - 1).to_string());
             }
             crate::cli::ModeCmd::Recovery => {
                 self.request
@@ -444,7 +444,7 @@ impl LegacyHandler {
                     .query_pairs_mut()
                     .append_pair("opt", "set")
                     .append_pair("type", "usb_boot")
-                    .append_pair("node", &args.node.to_string());
+                    .append_pair("node", &(args.node - 1).to_string());
                 let response = RequestBuilder::from_parts(
                     self.client.clone(),
                     self.request.try_clone().unwrap(),
