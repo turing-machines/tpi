@@ -207,21 +207,11 @@ impl LegacyHandler {
     }
 
     async fn handle_flash(&mut self, args: &FlashArgs) -> anyhow::Result<()> {
-        let mut send_request = || {
+        if args.local {
             self.request
                 .url_mut()
                 .query_pairs_mut()
                 .append_pair("file", &args.image_path.to_string_lossy());
-        };
-
-        if cfg!(feature = "local-only") {
-            send_request();
-            return Ok(());
-        }
-
-        #[cfg(not(feature = "local-only"))]
-        if args.local {
-            send_request();
             return Ok(());
         }
 
@@ -362,7 +352,7 @@ impl LegacyHandler {
             .append_pair("node", &(node - 1).to_string());
 
         let mut mode = if args.mode == UsbCmd::Host { 0 } else { 1 };
-        mode = mode | ((args.bmc as u8) << 1);
+        mode |= (args.bmc as u8) << 1;
         serializer.append_pair("mode", &mode.to_string());
 
         self.response_printer = Some(result_printer);

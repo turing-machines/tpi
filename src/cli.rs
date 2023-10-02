@@ -1,9 +1,9 @@
 use clap::{builder::NonEmptyStringValueParser, Args, Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
-#[cfg(not(feature = "local-only"))]
+#[cfg(not(feature = "localhost"))]
 const DEFAULT_HOST_NAME: &str = "turingpi.local";
-#[cfg(feature = "local-only")]
+#[cfg(feature = "localhost")]
 const DEFAULT_HOST_NAME: &str = "127.0.0.1";
 
 /// Commandline interface that controls turing-pi's BMC. The BMC must be connected to a network
@@ -162,7 +162,7 @@ pub struct FirmwareArgs {
 #[group(required = true)]
 pub struct FlashArgs {
     /// Update a node with an image local on the file-system.
-    #[cfg(not(feature = "local-only"))]
+    #[cfg(not(feature = "localhost"))]
     #[arg(short, long)]
     pub local: bool,
     /// Update a node with the given image.
