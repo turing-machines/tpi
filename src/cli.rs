@@ -162,7 +162,6 @@ pub struct FirmwareArgs {
 #[group(required = true)]
 pub struct FlashArgs {
     /// Update a node with an image local on the file-system.
-    #[cfg(not(feature = "localhost"))]
     #[arg(short, long)]
     pub local: bool,
     /// Update a node with the given image.
