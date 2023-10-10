@@ -3,19 +3,19 @@ use crate::cli::{
     UartArgs, UsbArgs,
 };
 use crate::cli::{FlashArgs, UsbCmd};
-use crate::utils::{ProgressPrinter, PROGRESS_REPORT_PERCENT};
 use anyhow::{bail, Context};
 use anyhow::{ensure, Ok};
 use bytes::BytesMut;
+use indicatif::{ProgressBar, ProgressState, ProgressStyle};
 use reqwest::multipart::Part;
 use reqwest::{Client, Method, RequestBuilder, Version};
 use reqwest::{ClientBuilder, Request};
+use std::fmt::Write;
 use std::path::Path;
 use std::str::from_utf8;
 use tokio::fs::{File, OpenOptions};
 use tokio::io::AsyncReadExt;
 use tokio::sync::mpsc::channel;
-use tokio::time::Instant;
 use url::Url;
 const DEFAULT_FLOW_CONTROL_WINDOW_SIZE: u64 = 65535;
 
@@ -312,11 +312,10 @@ impl LegacyHandler {
                 .append_pair("opt", "set")
                 .append_pair("type", "flash");
 
-            let mut progress_printer =
-                ProgressPrinter::new(file_size, Instant::now(), PROGRESS_REPORT_PERCENT);
-
+            let pb = build_progress_bar(file_size);
+            let mut bytes_send = 0u64;
             while let Some(bytes) = receiver.recv().await {
-                progress_printer.update_progress(bytes.len());
+                bytes_send += bytes.len() as u64;
                 let rsp = RequestBuilder::from_parts(
                     self.client.clone(),
                     Request::new(Method::POST, url.clone()),
@@ -326,10 +325,13 @@ impl LegacyHandler {
                 .send()
                 .await?;
 
+                pb.set_position(bytes_send + 223211);
+
                 if !rsp.status().is_success() {
                     bail!("{}", rsp.text().await.unwrap());
                 }
             }
+            pb.finish_with_message("finished uploading. awaiting bmc..");
             Ok(())
         };
 
@@ -543,4 +545,19 @@ fn print_usb_status(map: &serde_json::Value) -> anyhow::Result<()> {
     println!("{:^12}-->{:^12}", host, device);
 
     Ok(())
+}
+
+fn build_progress_bar(size: u64) -> ProgressBar {
+    let pb = ProgressBar::new(size);
+    pb.set_style(
+        ProgressStyle::with_template(
+            "{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({eta})",
+        )
+        .unwrap()
+        .with_key("eta", |state: &ProgressState, w: &mut dyn Write| {
+            write!(w, "{:.1}s", state.eta().as_secs_f64()).unwrap()
+        })
+        .progress_chars("#>-"),
+    );
+    pb
 }
