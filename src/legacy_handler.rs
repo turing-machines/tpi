@@ -173,20 +173,28 @@ impl LegacyHandler {
     }
 
     async fn handle_firmware(&mut self, args: &FirmwareArgs) -> anyhow::Result<()> {
+        let (mut file, file_name, size) = Self::open_file(&args.file).await?;
         if self.version == ApiVersion::V1 {
             // Opt out of the global request/response handler as we implement an
             // alternative flow here.
             self.skip_request = true;
-            let (mut file, file_name, _) = Self::open_file(&args.file).await?;
             self.request
                 .url_mut()
                 .query_pairs_mut()
                 .append_pair("opt", "set")
-                .append_pair("type", "flash")
+                .append_pair("type", "firmware")
                 .append_pair("file", &file_name);
             self.handle_file_upload_v1(&mut file, file_name).await
         } else {
-            bail!("`firmware` argument not implemented yet!");
+            self.skip_request = true;
+            self.request
+                .url_mut()
+                .query_pairs_mut()
+                .append_pair("opt", "set")
+                .append_pair("type", "firmware")
+                .append_pair("file", &file_name)
+                .append_pair("length", &size.to_string());
+            self.handle_file_upload_v1_1(&mut file, size).await
         }
     }
 
@@ -233,7 +241,7 @@ impl LegacyHandler {
         if self.version == ApiVersion::V1 {
             self.handle_file_upload_v1(&mut file, file_name).await
         } else {
-            self.handle_flash_v1_1(&mut file, file_size).await
+            self.handle_file_upload_v1_1(&mut file, file_size).await
         }
     }
 
@@ -258,7 +266,7 @@ impl LegacyHandler {
         Ok(())
     }
 
-    async fn handle_flash_v1_1(&self, file: &mut File, file_size: u64) -> anyhow::Result<()> {
+    async fn handle_file_upload_v1_1(&self, file: &mut File, file_size: u64) -> anyhow::Result<()> {
         let response =
             RequestBuilder::from_parts(self.client.clone(), self.request.try_clone().unwrap())
                 .version(Version::HTTP_2)
