@@ -6,6 +6,7 @@ use crate::cli::{FlashArgs, UsbCmd};
 use anyhow::{bail, Context};
 use anyhow::{ensure, Ok};
 use bytes::BytesMut;
+use humansize::{format_size, DECIMAL};
 use indicatif::{ProgressBar, ProgressState, ProgressStyle};
 use reqwest::multipart::Part;
 use reqwest::{Client, Method, RequestBuilder, Version};
@@ -14,7 +15,7 @@ use std::fmt::Write;
 use std::path::Path;
 use std::str::from_utf8;
 use tokio::fs::{File, OpenOptions};
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncReadExt, AsyncSeekExt};
 use tokio::sync::mpsc::channel;
 use url::Url;
 const DEFAULT_FLOW_CONTROL_WINDOW_SIZE: u64 = 65535;
@@ -199,13 +200,15 @@ impl LegacyHandler {
     }
 
     async fn open_file(path: &Path) -> anyhow::Result<(File, String, u64)> {
-        let file = OpenOptions::new()
+        let mut file = OpenOptions::new()
             .read(true)
             .open(path)
             .await
             .with_context(|| format!("cannot open file {}", path.to_string_lossy()))?;
 
-        let file_size = file.metadata().await?.len();
+        let file_size = file.seek(std::io::SeekFrom::End(0)).await?;
+        file.seek(std::io::SeekFrom::Start(0)).await?;
+
         let file_name = path
             .file_name()
             .ok_or(anyhow::anyhow!("file_name could not be extracted"))?
@@ -219,6 +222,9 @@ impl LegacyHandler {
             self.request
                 .url_mut()
                 .query_pairs_mut()
+                .append_pair("opt", "set")
+                .append_pair("type", "flash")
+                .append_key_only("local")
                 .append_pair("file", &args.image_path.to_string_lossy());
             return Ok(());
         }
@@ -278,7 +284,7 @@ impl LegacyHandler {
             bail!("could not execute flashing: {}", response.text().await?);
         }
 
-        println!("started transfer of {} MiB ..", file_size / 1024 / 1024);
+        println!("started transfer of {}..", format_size(file_size, DECIMAL));
 
         let (sender, mut receiver) = channel::<bytes::Bytes>(256);
         let read_task = async move {
@@ -325,13 +331,14 @@ impl LegacyHandler {
                 .send()
                 .await?;
 
-                pb.set_position(bytes_send + 223211);
+                pb.set_position(bytes_send);
 
                 if !rsp.status().is_success() {
                     bail!("{}", rsp.text().await.unwrap());
                 }
             }
-            pb.finish_with_message("finished uploading. awaiting bmc..");
+            pb.finish();
+            println!("finished uploading. awaiting bmc..");
             Ok(())
         };
 
