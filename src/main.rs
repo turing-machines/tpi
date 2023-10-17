@@ -1,5 +1,7 @@
 mod cli;
 mod legacy_handler;
+mod request;
+
 use crate::legacy_handler::LegacyHandler;
 use clap::{CommandFactory, Parser};
 use clap_complete::generate;

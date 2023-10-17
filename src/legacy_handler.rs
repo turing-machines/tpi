@@ -3,21 +3,22 @@ use crate::cli::{
     UartArgs, UsbArgs,
 };
 use crate::cli::{FlashArgs, UsbCmd};
+use crate::request::Request;
+
 use anyhow::{bail, Context};
 use anyhow::{ensure, Ok};
 use bytes::BytesMut;
 use humansize::{format_size, DECIMAL};
 use indicatif::{ProgressBar, ProgressState, ProgressStyle};
 use reqwest::multipart::Part;
-use reqwest::{Client, Method, RequestBuilder, Version};
-use reqwest::{ClientBuilder, Request};
+use reqwest::{Client, ClientBuilder, Version};
 use std::fmt::Write;
 use std::path::Path;
 use std::str::from_utf8;
 use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 use tokio::sync::mpsc::channel;
-use url::Url;
+
 const DEFAULT_FLOW_CONTROL_WINDOW_SIZE: u64 = 65535;
 
 type ResponsePrinter = fn(&serde_json::Value) -> anyhow::Result<()>;
@@ -32,12 +33,6 @@ pub struct LegacyHandler {
 }
 
 impl LegacyHandler {
-    fn url_from_host(host: String, scheme: &str) -> anyhow::Result<Url> {
-        let mut url = Url::parse(&format!("{}://{}", scheme, host))?;
-        url.set_path("api/bmc");
-        Ok(url)
-    }
-
     fn create_client(version: ApiVersion) -> anyhow::Result<Client> {
         if version == ApiVersion::V1 {
             return Ok(Client::new());
@@ -54,10 +49,11 @@ impl LegacyHandler {
     }
 
     pub async fn new(host: String, json: bool, version: ApiVersion) -> anyhow::Result<Self> {
-        let url = Self::url_from_host(host, version.scheme())?;
+        let request = Request::new(host, version)?;
         let client = Self::create_client(version)?;
+
         Ok(Self {
-            request: Request::new(Method::GET, url),
+            request,
             client,
             response_printer: None,
             json,
@@ -84,11 +80,7 @@ impl LegacyHandler {
             return Ok(());
         }
 
-        let response = self
-            .client
-            .execute(self.request)
-            .await
-            .context("http request error")?;
+        let response = self.request.send(&self.client).await?;
         let status = response.status();
         let bytes = response.bytes().await?;
 
@@ -273,12 +265,9 @@ impl LegacyHandler {
     }
 
     async fn handle_file_upload_v1_1(&self, file: &mut File, file_size: u64) -> anyhow::Result<()> {
-        let response =
-            RequestBuilder::from_parts(self.client.clone(), self.request.try_clone().unwrap())
-                .version(Version::HTTP_2)
-                .send()
-                .await
-                .context("flash request")?;
+        let mut req = self.request.clone();
+        *req.as_mut().version_mut() = Version::HTTP_2;
+        let response = req.send(&self.client).await.context("flash request")?;
 
         if !response.status().is_success() {
             bail!("could not execute flashing: {}", response.text().await?);
@@ -310,11 +299,14 @@ impl LegacyHandler {
         let send_task = async move {
             // try to keep the additional header sizes as low as possible within
             // the constrains of the chosen legacy API format (with queries).
-            let mut url = Self::url_from_host(
-                self.request.url().host().unwrap().to_string(),
-                self.version.scheme(),
-            )?;
-            url.query_pairs_mut()
+            let host = self.request.url().host().expect("request has no host");
+            let mut post_req = Request::new_post(host.to_string(), self.version)?;
+
+            *post_req.as_mut().version_mut() = Version::HTTP_2;
+
+            post_req
+                .url_mut()
+                .query_pairs_mut()
                 .append_pair("opt", "set")
                 .append_pair("type", "flash");
 
@@ -322,14 +314,9 @@ impl LegacyHandler {
             let mut bytes_send = 0u64;
             while let Some(bytes) = receiver.recv().await {
                 bytes_send += bytes.len() as u64;
-                let rsp = RequestBuilder::from_parts(
-                    self.client.clone(),
-                    Request::new(Method::POST, url.clone()),
-                )
-                .version(Version::HTTP_2)
-                .body(bytes)
-                .send()
-                .await?;
+                let mut req = post_req.clone();
+                *req.as_mut().body_mut() = Some(reqwest::Body::from(bytes));
+                let rsp = req.send(&self.client).await?;
 
                 pb.set_position(bytes_send);
 
@@ -361,7 +348,9 @@ impl LegacyHandler {
             return Ok(());
         }
 
-        let Some(node) = args.node else { bail!("`--node` argument missing") };
+        let Some(node) = args.node else {
+            bail!("`--node` argument missing")
+        };
 
         serializer
             .append_pair("opt", "set")
@@ -421,12 +410,7 @@ impl LegacyHandler {
                     .append_pair("opt", "set")
                     .append_pair("type", "clear_usb_boot")
                     .append_pair("node", &(args.node - 1).to_string());
-                let response = RequestBuilder::from_parts(
-                    self.client.clone(),
-                    self.request.try_clone().unwrap(),
-                )
-                .send()
-                .await?;
+                let response = self.request.clone().send(&self.client).await?;
 
                 if !response.status().is_success() {
                     bail!("could not execute Normal mode: {}", response.text().await?);
@@ -452,12 +436,7 @@ impl LegacyHandler {
                     .append_pair("opt", "set")
                     .append_pair("type", "usb_boot")
                     .append_pair("node", &(args.node - 1).to_string());
-                let response = RequestBuilder::from_parts(
-                    self.client.clone(),
-                    self.request.try_clone().unwrap(),
-                )
-                .send()
-                .await?;
+                let response = self.request.clone().send(&self.client).await?;
 
                 if !response.status().is_success() {
                     bail!(
