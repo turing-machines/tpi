@@ -1,5 +1,6 @@
 mod cli;
 mod legacy_handler;
+mod prompt;
 mod request;
 
 use crate::legacy_handler::LegacyHandler;
