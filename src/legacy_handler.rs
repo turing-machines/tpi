@@ -5,8 +5,7 @@ use crate::cli::{
 use crate::cli::{FlashArgs, UsbCmd};
 use crate::request::Request;
 
-use anyhow::{bail, Context};
-use anyhow::{ensure, Ok};
+use anyhow::{bail, ensure, Context};
 use bytes::BytesMut;
 use humansize::{format_size, DECIMAL};
 use indicatif::{ProgressBar, ProgressState, ProgressStyle};
@@ -48,7 +47,7 @@ impl LegacyHandler {
         Ok(client)
     }
 
-    pub async fn new(host: String, json: bool, version: ApiVersion) -> anyhow::Result<Self> {
+    pub fn new(host: String, json: bool, version: ApiVersion) -> anyhow::Result<Self> {
         let request = Request::new(host, version)?;
         let client = Self::create_client(version)?;
 
@@ -85,7 +84,7 @@ impl LegacyHandler {
         let bytes = response.bytes().await?;
 
         let body: serde_json::Value = match serde_json::from_slice(&bytes) {
-            core::result::Result::Ok(b) => b,
+            Ok(b) => b,
             Err(_) => bail!(
                 "{}:\n{}",
                 status.canonical_reason().unwrap_or("unknown reason"),
@@ -99,9 +98,13 @@ impl LegacyHandler {
         }
 
         body.get("response")
-            .ok_or(anyhow::anyhow!("expected 'reponse' key in JSON payload"))
+            .ok_or_else(|| anyhow::anyhow!("expected 'reponse' key in JSON payload"))
             .map(|response| {
-                let extracted = &response.as_array().unwrap()[0];
+                let extracted = response
+                    .as_array()
+                    .unwrap_or_else(|| panic!("API error: `response` is not an array"))
+                    .first()
+                    .unwrap_or_else(|| panic!("API error: `response` is empty"));
                 let default_print = || {
                     // In this case there is no printer set, fallback on
                     // printing the http response body as text.
@@ -113,7 +116,7 @@ impl LegacyHandler {
                         default_print();
                         println!("{}", e);
                     }
-                })
+                });
             })
     }
 
@@ -358,7 +361,7 @@ impl LegacyHandler {
             .append_pair("node", &(node - 1).to_string());
 
         let mut mode = if args.mode == UsbCmd::Host { 0 } else { 1 };
-        mode |= (args.bmc as u8) << 1;
+        mode |= u8::from(args.bmc) << 1;
         serializer.append_pair("mode", &mode.to_string());
 
         self.response_printer = Some(result_printer);
@@ -541,7 +544,7 @@ fn build_progress_bar(size: u64) -> ProgressBar {
         )
         .unwrap()
         .with_key("eta", |state: &ProgressState, w: &mut dyn Write| {
-            write!(w, "{:.1}s", state.eta().as_secs_f64()).unwrap()
+            write!(w, "{:.1}s", state.eta().as_secs_f64()).unwrap();
         })
         .progress_chars("#>-"),
     );
