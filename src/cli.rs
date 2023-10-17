@@ -58,13 +58,13 @@ pub enum Commands {
     Info,
 }
 
-#[derive(ValueEnum, Clone, PartialEq)]
+#[derive(ValueEnum, Clone, PartialEq, Eq)]
 pub enum GetSet {
     Get,
     Set,
 }
 
-#[derive(ValueEnum, Clone, PartialEq)]
+#[derive(ValueEnum, Clone, PartialEq, Eq)]
 pub enum ModeCmd {
     /// Clear any advanced mode
     Normal,
@@ -76,7 +76,7 @@ pub enum ModeCmd {
     Recovery,
 }
 
-#[derive(ValueEnum, Clone, PartialEq)]
+#[derive(ValueEnum, Clone, PartialEq, Eq)]
 pub enum UsbCmd {
     /// Configure the specified node as USB device. The `BMC` itself or USB-A
     /// port is USB host
@@ -87,7 +87,7 @@ pub enum UsbCmd {
     Status,
 }
 
-#[derive(ValueEnum, Clone, PartialEq)]
+#[derive(ValueEnum, Clone, PartialEq, Eq)]
 pub enum PowerCmd {
     On,
     Off,
@@ -95,7 +95,7 @@ pub enum PowerCmd {
     Get,
 }
 
-#[derive(ValueEnum, Clone, Copy, PartialEq)]
+#[derive(ValueEnum, Clone, Copy, PartialEq, Eq)]
 pub enum ApiVersion {
     V1,
     V1_1,

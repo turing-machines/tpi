@@ -1339,7 +1339,6 @@ dependencies = [
  "dirs",
  "humansize",
  "indicatif",
- "log",
  "reqwest",
  "serde_json",
  "tokio",
