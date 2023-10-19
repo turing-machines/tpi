@@ -59,17 +59,30 @@ impl Request {
     }
 
     pub async fn send(mut self, client: Client) -> Result<Response> {
-        let token = self.auth_token(&client, true).await?;
-        let mut builder = RequestBuilder::from_parts(client, self.inner).bearer_auth(token);
+        let mut authenticated = cfg!(not(feature = "localhost"));
+        let mut use_cache = true;
 
-        if let Some(form) = self.multipart {
-            builder = builder.multipart(form);
-        }
+        let resp = loop {
+            let mut builder =
+                RequestBuilder::from_parts(client.clone(), self.inner.try_clone().unwrap());
 
-        let resp = builder.send().await?;
-        if resp.status() == StatusCode::UNAUTHORIZED {
-            bail!("{}", resp.status());
-        }
+            if authenticated {
+                let token = self.auth_token(&client, use_cache).await?;
+                builder = builder.bearer_auth(token);
+            }
+
+            if let Some(form) = self.multipart.take() {
+                builder = builder.multipart(form);
+            }
+
+            let resp = builder.send().await?;
+            if resp.status() == StatusCode::UNAUTHORIZED {
+                use_cache = !authenticated;
+                authenticated = true;
+            } else {
+                break resp;
+            }
+        };
         Ok(resp)
     }
 
