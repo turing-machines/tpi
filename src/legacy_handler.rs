@@ -18,21 +18,16 @@ use crate::cli::{
 };
 use crate::cli::{FlashArgs, UsbCmd};
 use crate::request::Request;
-
 use anyhow::{bail, ensure, Context};
-use bytes::BytesMut;
-use humansize::{format_size, DECIMAL};
-use indicatif::{ProgressBar, ProgressState, ProgressStyle};
+use indicatif::{HumanBytes, ProgressBar, ProgressState, ProgressStyle};
 use reqwest::multipart::Part;
-use reqwest::{Client, ClientBuilder, Version};
+use reqwest::{Body, Client, ClientBuilder};
 use std::fmt::Write;
 use std::path::Path;
 use std::str::from_utf8;
 use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
-use tokio::sync::mpsc::channel;
-
-const DEFAULT_FLOW_CONTROL_WINDOW_SIZE: u64 = 65535;
+use tokio_util::io::ReaderStream;
 
 type ResponsePrinter = fn(&serde_json::Value) -> anyhow::Result<()>;
 
@@ -54,7 +49,6 @@ impl LegacyHandler {
         let client = ClientBuilder::new()
             .gzip(true)
             .danger_accept_invalid_certs(true)
-            .http2_prior_knowledge()
             .https_only(true)
             .use_rustls_tls()
             .build()?;
@@ -93,7 +87,7 @@ impl LegacyHandler {
             return Ok(());
         }
 
-        let response = self.request.send(&self.client).await?;
+        let response = self.request.send(self.client).await?;
         let status = response.status();
         let bytes = response.bytes().await?;
 
@@ -204,7 +198,7 @@ impl LegacyHandler {
                 .append_pair("type", "firmware")
                 .append_pair("file", &file_name)
                 .append_pair("length", &size.to_string());
-            self.handle_file_upload_v1_1(&mut file, size).await
+            self.handle_file_upload_v1_1(file, size).await
         }
     }
 
@@ -234,7 +228,8 @@ impl LegacyHandler {
                 .append_pair("opt", "set")
                 .append_pair("type", "flash")
                 .append_key_only("local")
-                .append_pair("file", &args.image_path.to_string_lossy());
+                .append_pair("file", &args.image_path.to_string_lossy())
+                .append_pair("node", &(args.node - 1).to_string());
             return Ok(());
         }
 
@@ -256,7 +251,7 @@ impl LegacyHandler {
         if self.version == ApiVersion::V1 {
             self.handle_file_upload_v1(&mut file, file_name).await
         } else {
-            self.handle_file_upload_v1_1(&mut file, file_size).await
+            self.handle_file_upload_v1_1(file, file_size).await
         }
     }
 
@@ -269,7 +264,7 @@ impl LegacyHandler {
 
         let mut bytes = Vec::new();
         file.read_to_end(&mut bytes).await?;
-        let part = Part::stream(bytes)
+        let part = Part::bytes(bytes)
             .mime_str("application/octet-stream")?
             .file_name(file_name);
         let form = reqwest::multipart::Form::new().part("file", part);
@@ -281,78 +276,53 @@ impl LegacyHandler {
         Ok(())
     }
 
-    async fn handle_file_upload_v1_1(&self, file: &mut File, file_size: u64) -> anyhow::Result<()> {
-        let mut req = self.request.clone();
-        *req.as_mut().version_mut() = Version::HTTP_2;
-        let response = req.send(&self.client).await.context("flash request")?;
+    async fn handle_file_upload_v1_1(&self, file: File, file_size: u64) -> anyhow::Result<()> {
+        let req = self.request.clone();
+        let response = req
+            .send(self.client.clone())
+            .await
+            .context("flash request")?;
 
         if !response.status().is_success() {
             bail!("could not execute flashing: {}", response.text().await?);
         }
 
-        println!("started transfer of {}..", format_size(file_size, DECIMAL));
+        let json: serde_json::Value = response.json().await?;
+        let handle = json["handle"].as_u64().unwrap_or_default();
 
-        let (sender, mut receiver) = channel::<bytes::Bytes>(256);
-        let read_task = async move {
-            let mut bytes_read = 0;
-            while bytes_read < file_size {
-                let read_len: usize = DEFAULT_FLOW_CONTROL_WINDOW_SIZE
-                    .min(file_size - bytes_read)
-                    .try_into()?;
-                let mut buffer = BytesMut::zeroed(read_len);
-                let read = file.read(&mut buffer).await?;
-                if 0 == read {
-                    // end_of_file
-                    break;
-                }
+        println!("started transfer of {}..", HumanBytes(file_size));
+        let pb = build_progress_bar(file_size);
+        let stream = ReaderStream::new(pb.wrap_async_write(file));
+        let stream_part =
+            reqwest::multipart::Part::stream_with_length(Body::wrap_stream(stream), file_size)
+                .mime_str("application/octet-stream")?;
 
-                bytes_read += read as u64;
-                buffer.truncate(read);
-                sender.send(buffer.into()).await?;
-            }
-            Ok(())
-        };
+        let mut multipart_request = Request::new_post(self.request.host.clone(), self.request.ver)?;
+        multipart_request
+            .url_mut()
+            .path_segments_mut()
+            .unwrap()
+            .push("upload")
+            .push(&handle.to_string());
 
-        let send_task = async move {
-            // try to keep the additional header sizes as low as possible within
-            // the constrains of the chosen legacy API format (with queries).
-            let host = self.request.url().host().expect("request has no host");
-            let mut post_req = Request::new_post(host.to_string(), self.version)?;
+        let form = reqwest::multipart::Form::new().part("file", stream_part);
+        multipart_request.set_multipart(form);
+        multipart_request.send(self.client.clone()).await?;
 
-            *post_req.as_mut().version_mut() = Version::HTTP_2;
+        let mut request = self.request.clone();
+        request
+            .url_mut()
+            .query_pairs_mut()
+            .append_pair("opt", "get")
+            .append_pair("type", "flash");
 
-            post_req
-                .url_mut()
-                .query_pairs_mut()
-                .append_pair("opt", "set")
-                .append_pair("type", "flash");
+        let status = request
+            .send(self.client.clone())
+            .await
+            .context("flash request")?;
 
-            let pb = build_progress_bar(file_size);
-            let mut bytes_send = 0u64;
-            while let Some(bytes) = receiver.recv().await {
-                bytes_send += bytes.len() as u64;
-                let mut req = post_req.clone();
-                *req.as_mut().body_mut() = Some(reqwest::Body::from(bytes));
-                let rsp = req.send(&self.client).await?;
-
-                pb.set_position(bytes_send);
-
-                if !rsp.status().is_success() {
-                    bail!("{}", rsp.text().await.unwrap());
-                }
-            }
-            pb.finish();
-            println!("finished uploading. awaiting bmc..");
-            Ok(())
-        };
-
-        // Sending task runs decoupled from the reading task for 2 reasons:
-        // * To spend as much time as possible sending data over the TCP
-        // socket.
-        // * Buffering of data smooths out any hick ups in reading or sending
-        // data. This comes with a small memory penalty, tune [BUFFER_SIZE] if
-        // your target platform is memory constrained.
-        tokio::try_join!(read_task, send_task).map(|_| ())
+        println!("{}", status.text().await?);
+        Ok(())
     }
 
     fn handle_usb(&mut self, args: &UsbArgs) -> anyhow::Result<()> {
@@ -427,7 +397,7 @@ impl LegacyHandler {
                     .append_pair("opt", "set")
                     .append_pair("type", "clear_usb_boot")
                     .append_pair("node", &(args.node - 1).to_string());
-                let response = self.request.clone().send(&self.client).await?;
+                let response = self.request.clone().send(self.client.clone()).await?;
 
                 if !response.status().is_success() {
                     bail!("could not execute Normal mode: {}", response.text().await?);
@@ -453,7 +423,7 @@ impl LegacyHandler {
                     .append_pair("opt", "set")
                     .append_pair("type", "usb_boot")
                     .append_pair("node", &(args.node - 1).to_string());
-                let response = self.request.clone().send(&self.client).await?;
+                let response = self.request.clone().send(self.client.clone()).await?;
 
                 if !response.status().is_success() {
                     bail!(

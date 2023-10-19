@@ -15,19 +15,22 @@
 //! Wrapper for `reqwest::Request` that asks for authentication if needed.
 
 use std::io::Write;
+use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
 
-use anyhow::{bail, Context, Result};
-use reqwest::{header, Client, Method, Response, StatusCode};
+use anyhow::{bail, Result};
+use reqwest::multipart::Form;
+use reqwest::{Client, Method, RequestBuilder, Response, StatusCode};
 use url::Url;
 
 use crate::cli::ApiVersion;
 use crate::prompt;
 
 pub struct Request {
-    host: String,
-    ver: ApiVersion,
+    pub host: String,
+    pub ver: ApiVersion,
     inner: reqwest::Request,
+    multipart: Option<Form>,
 }
 
 impl Request {
@@ -43,42 +46,39 @@ impl Request {
         let url = url_from_host(&host, ver.scheme())?;
         let inner = reqwest::Request::new(method, url);
 
-        Ok(Self { host, ver, inner })
+        Ok(Self {
+            host,
+            ver,
+            inner,
+            multipart: None,
+        })
     }
 
-    pub async fn send(mut self, client: &Client) -> Result<Response> {
-        self.add_auth_token(client, true).await?;
+    pub fn set_multipart(&mut self, form: Form) {
+        self.multipart = Some(form);
+    }
 
-        let resp = loop {
-            let req = self.clone().inner;
-            let resp = client.execute(req).await.context("HTTP request error")?;
+    pub async fn send(mut self, client: Client) -> Result<Response> {
+        let token = self.auth_token(&client, true).await?;
+        let mut builder = RequestBuilder::from_parts(client, self.inner).bearer_auth(token);
 
-            if resp.status() == StatusCode::UNAUTHORIZED {
-                println!("Invalid token");
-                self.add_auth_token(client, false).await?;
-            } else {
-                break resp;
-            }
-        };
+        if let Some(form) = self.multipart {
+            builder = builder.multipart(form);
+        }
 
+        let resp = builder.send().await?;
+        if resp.status() == StatusCode::UNAUTHORIZED {
+            bail!("{}", resp.status());
+        }
         Ok(resp)
     }
 
-    async fn add_auth_token(&mut self, client: &Client, use_cache: bool) -> Result<()> {
-        let token = if use_cache {
-            get_bearer_token(&self.host, self.ver, client).await?
+    async fn auth_token(&mut self, client: &Client, use_cache: bool) -> Result<String> {
+        if use_cache {
+            get_bearer_token(&self.host, self.ver, client).await
         } else {
-            request_token(&self.host, self.ver, client).await?
-        };
-
-        let header = format!("Bearer {}", token);
-
-        self.inner.headers_mut().insert(
-            header::AUTHORIZATION,
-            header.parse().context("convert to header value")?,
-        );
-
-        Ok(())
+            request_token(&self.host, self.ver, client).await
+        }
     }
 
     pub fn url(&self) -> &Url {
@@ -87,10 +87,6 @@ impl Request {
 
     pub fn url_mut(&mut self) -> &mut Url {
         self.inner.url_mut()
-    }
-
-    pub fn as_mut(&mut self) -> &mut reqwest::Request {
-        &mut self.inner
     }
 
     pub fn clone(&self) -> Self {
@@ -103,7 +99,22 @@ impl Request {
             host: self.host.clone(),
             ver: self.ver,
             inner,
+            multipart: None,
         }
+    }
+}
+
+impl Deref for Request {
+    type Target = reqwest::Request;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl DerefMut for Request {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.inner
     }
 }
 
