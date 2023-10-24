@@ -27,9 +27,9 @@ use crate::cli::ApiVersion;
 use crate::prompt;
 
 pub struct Request {
-    pub host: String,
-    pub ver: ApiVersion,
-    pub creds: (Option<String>, Option<String>),
+    host: String,
+    ver: ApiVersion,
+    creds: (Option<String>, Option<String>),
     inner: reqwest::Request,
     multipart: Option<Form>,
 }
@@ -40,30 +40,26 @@ impl Request {
         ver: ApiVersion,
         creds: (Option<String>, Option<String>),
     ) -> Result<Self> {
-        Self::construct_request(host, ver, creds, Method::GET)
-    }
-
-    pub fn new_post(
-        host: String,
-        ver: ApiVersion,
-        creds: (Option<String>, Option<String>),
-    ) -> Result<Self> {
-        Self::construct_request(host, ver, creds, Method::POST)
-    }
-
-    fn construct_request(
-        host: String,
-        ver: ApiVersion,
-        creds: (Option<String>, Option<String>),
-        method: reqwest::Method,
-    ) -> Result<Self> {
         let url = url_from_host(&host, ver.scheme())?;
-        let inner = reqwest::Request::new(method, url);
+        let inner = reqwest::Request::new(Method::GET, url);
 
         Ok(Self {
             host,
             ver,
             creds,
+            inner,
+            multipart: None,
+        })
+    }
+
+    pub fn to_post(&self) -> Result<Self> {
+        let url = url_from_host(&self.host, self.ver.scheme())?;
+        let inner = reqwest::Request::new(Method::POST, url);
+
+        Ok(Self {
+            host: self.host.clone(),
+            ver: self.ver,
+            creds: self.creds.clone(),
             inner,
             multipart: None,
         })
