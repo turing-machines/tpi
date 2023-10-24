@@ -11,7 +11,7 @@ repository = "https://github.com/turing-machines/tpi"
 [dependencies]
 anyhow = "1.0.75"
 bytes = "1.4.0"
-clap = { version = "4.4.2", features = ["derive"] }
+clap = { version = "4.4.2", features = ["derive", "wrap_help"] }
 clap_complete = "4.4.0"
 crossterm = "0.27.0"
 dirs = "5.0.1"
