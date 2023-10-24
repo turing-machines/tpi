@@ -300,11 +300,7 @@ impl LegacyHandler {
             reqwest::multipart::Part::stream_with_length(Body::wrap_stream(stream), file_size)
                 .mime_str("application/octet-stream")?;
 
-        let mut multipart_request = Request::new_post(
-            self.request.host.clone(),
-            self.request.ver,
-            self.request.creds.clone(),
-        )?;
+        let mut multipart_request = self.request.to_post()?;
         multipart_request
             .url_mut()
             .path_segments_mut()
