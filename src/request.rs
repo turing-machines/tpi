@@ -29,26 +29,41 @@ use crate::prompt;
 pub struct Request {
     pub host: String,
     pub ver: ApiVersion,
+    pub creds: (Option<String>, Option<String>),
     inner: reqwest::Request,
     multipart: Option<Form>,
 }
 
 impl Request {
-    pub fn new(host: String, ver: ApiVersion) -> Result<Self> {
-        Self::construct_request(host, ver, Method::GET)
+    pub fn new(
+        host: String,
+        ver: ApiVersion,
+        creds: (Option<String>, Option<String>),
+    ) -> Result<Self> {
+        Self::construct_request(host, ver, creds, Method::GET)
     }
 
-    pub fn new_post(host: String, ver: ApiVersion) -> Result<Self> {
-        Self::construct_request(host, ver, Method::POST)
+    pub fn new_post(
+        host: String,
+        ver: ApiVersion,
+        creds: (Option<String>, Option<String>),
+    ) -> Result<Self> {
+        Self::construct_request(host, ver, creds, Method::POST)
     }
 
-    fn construct_request(host: String, ver: ApiVersion, method: reqwest::Method) -> Result<Self> {
+    fn construct_request(
+        host: String,
+        ver: ApiVersion,
+        creds: (Option<String>, Option<String>),
+        method: reqwest::Method,
+    ) -> Result<Self> {
         let url = url_from_host(&host, ver.scheme())?;
         let inner = reqwest::Request::new(method, url);
 
         Ok(Self {
             host,
             ver,
+            creds,
             inner,
             multipart: None,
         })
@@ -88,9 +103,9 @@ impl Request {
 
     async fn auth_token(&mut self, client: &Client, use_cache: bool) -> Result<String> {
         if use_cache {
-            get_bearer_token(&self.host, self.ver, client).await
+            get_bearer_token(&self.host, self.ver, &self.creds, client).await
         } else {
-            request_token(&self.host, self.ver, client).await
+            request_token(&self.host, self.ver, &self.creds, client).await
         }
     }
 
@@ -111,6 +126,7 @@ impl Request {
         Self {
             host: self.host.clone(),
             ver: self.ver,
+            creds: self.creds.clone(),
             inner,
             multipart: None,
         }
@@ -137,12 +153,24 @@ fn url_from_host(host: &str, scheme: &str) -> Result<Url> {
     Ok(url)
 }
 
-async fn get_bearer_token(host: &str, ver: ApiVersion, client: &Client) -> Result<String> {
+async fn get_bearer_token(
+    host: &str,
+    ver: ApiVersion,
+    creds: &(Option<String>, Option<String>),
+    client: &Client,
+) -> Result<String> {
+    // If either credentials are supplied, use them
+    if creds.0.is_some() || creds.1.is_some() {
+        return request_token(host, ver, creds, client).await;
+    }
+
+    // Else, try retrieving cached token from a file
     if let Some(token) = get_cached_token() {
         return Ok(token);
     }
 
-    request_token(host, ver, client).await
+    // If it doesn't exist, ask on an interactive prompt
+    request_token(host, ver, creds, client).await
 }
 
 fn get_cached_token() -> Option<String> {
@@ -161,7 +189,12 @@ fn get_cache_file_location() -> PathBuf {
     path
 }
 
-async fn request_token(host: &str, ver: ApiVersion, client: &Client) -> Result<String> {
+async fn request_token(
+    host: &str,
+    ver: ApiVersion,
+    creds: &(Option<String>, Option<String>),
+    client: &Client,
+) -> Result<String> {
     let mut auth_url = url_from_host(host, ver.scheme())?;
 
     auth_url
@@ -169,8 +202,25 @@ async fn request_token(host: &str, ver: ApiVersion, client: &Client) -> Result<S
         .expect("URL cannot be a base")
         .push("authenticate");
 
-    let username = prompt::simple("User")?;
-    let password = prompt::password("Password")?;
+    // Save token to a file only if credentials weren't supplied from the command line
+    let save_token = creds.0.is_none() && creds.1.is_none();
+
+    let (username, password) = match creds.clone() {
+        (Some(username), Some(password)) => (username, password),
+        (Some(username), None) => {
+            let password = prompt::password("Password")?;
+            (username, password)
+        }
+        (None, Some(password)) => {
+            let username = prompt::simple("User")?;
+            (username, password)
+        }
+        (None, None) => {
+            let username = prompt::simple("User")?;
+            let password = prompt::password("Password")?;
+            (username, password)
+        }
+    };
 
     let body = serde_json::json!({
         "username": username,
@@ -184,9 +234,11 @@ async fn request_token(host: &str, ver: ApiVersion, client: &Client) -> Result<S
             let json = resp.json::<serde_json::Value>().await?;
             let token = get_param(&json, "id");
 
-            if let Err(e) = cache_token(&token) {
-                let path = get_cache_file_location();
-                println!("Warning: failed to write to cache file {:?}: {}", path, e);
+            if save_token {
+                if let Err(e) = cache_token(&token) {
+                    let path = get_cache_file_location();
+                    println!("Warning: failed to write to cache file {:?}: {}", path, e);
+                }
             }
 
             Ok(token)

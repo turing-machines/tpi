@@ -30,16 +30,30 @@ const DEFAULT_HOST_NAME: &str = "127.0.0.1";
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Commands>,
+
     /// Specify the Turing-pi host to connect to. Note: IPv6 addresses must be wrapped in square
     /// brackets e.g. `[::1]`
     #[arg(default_value = DEFAULT_HOST_NAME, value_parser = NonEmptyStringValueParser::new(), long, global = true)]
     pub host: Option<String>,
-    #[arg(long, global = true, help = "print results formatted as JSON")]
+
+    /// Specify user name to log in as. If unused, an interactive prompt will ask for credentials
+    /// unless authentication cache file is present.
+    #[arg(long, global = true)]
+    pub user: Option<String>,
+
+    /// Same as `--username`
+    #[arg(long, name = "PASS", global = true)]
+    pub password: Option<String>,
+
+    /// Print results formatted as JSON
+    #[arg(long, global = true)]
     pub json: bool,
+
     /// Force which version of the BMC API to use. Try lower the version if you are running
     /// older BMC firmware.
     #[arg(default_value = "v1-1", short, global = true)]
     pub api_version: Option<ApiVersion>,
+
     #[arg(short, name = "gen completion", exclusive = true)]
     pub gencompletion: Option<clap_complete::shells::Shell>,
 }
@@ -49,25 +63,32 @@ pub enum Commands {
     /// Power on/off or reset specific nodes.
     #[command(arg_required_else_help = true)]
     Power(PowerArgs),
+
     /// Change the USB device/host configuration. The USB-bus can only be routed to one
     /// node simultaneously.
     #[command(arg_required_else_help = true)]
     Usb(UsbArgs),
+
     /// Upgrade the firmware of the BMC
     #[command(arg_required_else_help = true)]
     Firmware(FirmwareArgs),
+
     /// Flash a given node
     #[command(arg_required_else_help = true)]
     Flash(FlashArgs),
+
     /// Configure the on-board Ethernet switch.
     #[command(arg_required_else_help = true)]
     Eth(EthArgs),
+
     /// Read or write over UART
     #[command(arg_required_else_help = true)]
     Uart(UartArgs),
+
     /// Advanced node modes
     #[command(arg_required_else_help = true)]
     Advanced(AdvancedArgs),
+
     /// Print turing-pi info
     Info,
 }
@@ -92,8 +113,7 @@ pub enum ModeCmd {
 
 #[derive(ValueEnum, Clone, PartialEq, Eq)]
 pub enum UsbCmd {
-    /// Configure the specified node as USB device. The `BMC` itself or USB-A
-    /// port is USB host
+    /// Configure the specified node as USB device. The `BMC` itself or USB-A port is USB host
     Device,
     /// Configure the specified node as USB Host. USB devices can be attached to
     /// the USB-A port on the board.
@@ -143,8 +163,7 @@ pub struct AdvancedArgs {
 #[derive(Args)]
 pub struct UartArgs {
     pub action: GetSet,
-    /// [possible values: 1-4], Not specifying a node
-    /// selects all nodes.
+    /// [possible values: 1-4], Not specifying a node selects all nodes.
     #[arg(short, long)]
     #[arg(value_parser = clap::value_parser!(u8).range(1..5))]
     pub node: u8,
@@ -189,10 +208,9 @@ pub struct FlashArgs {
 
 #[derive(Args)]
 pub struct PowerArgs {
-    // specify command
+    /// Specify command
     pub cmd: PowerCmd,
-    /// [possible values: 1-4], Not specifying a node
-    /// selects all nodes.
+    /// [possible values: 1-4], Not specifying a node selects all nodes.
     #[arg(short, long)]
     #[arg(value_parser = clap::value_parser!(u8).range(1..5))]
     pub node: Option<u8>,

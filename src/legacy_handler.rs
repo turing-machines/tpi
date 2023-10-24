@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::cli::{
-    AdvancedArgs, ApiVersion, Commands, EthArgs, FirmwareArgs, GetSet, PowerArgs, PowerCmd,
+    AdvancedArgs, ApiVersion, Cli, Commands, EthArgs, FirmwareArgs, GetSet, PowerArgs, PowerCmd,
     UartArgs, UsbArgs,
 };
 use crate::cli::{FlashArgs, UsbCmd};
@@ -55,8 +55,11 @@ impl LegacyHandler {
         Ok(client)
     }
 
-    pub fn new(host: String, json: bool, version: ApiVersion) -> anyhow::Result<Self> {
-        let request = Request::new(host, version)?;
+    pub fn new(host: String, args: &Cli) -> anyhow::Result<Self> {
+        let json = args.json;
+        let version = args.api_version.expect("Missing API version");
+        let creds = (args.user.clone(), args.password.clone());
+        let request = Request::new(host, version, creds)?;
         let client = Self::create_client(version)?;
 
         Ok(Self {
@@ -297,7 +300,11 @@ impl LegacyHandler {
             reqwest::multipart::Part::stream_with_length(Body::wrap_stream(stream), file_size)
                 .mime_str("application/octet-stream")?;
 
-        let mut multipart_request = Request::new_post(self.request.host.clone(), self.request.ver)?;
+        let mut multipart_request = Request::new_post(
+            self.request.host.clone(),
+            self.request.ver,
+            self.request.creds.clone(),
+        )?;
         multipart_request
             .url_mut()
             .path_segments_mut()
