@@ -49,6 +49,7 @@ impl LegacyHandler {
         let client = ClientBuilder::new()
             .gzip(true)
             .danger_accept_invalid_certs(true)
+            .http2_prior_knowledge()
             .https_only(true)
             .use_rustls_tls()
             .build()?;
