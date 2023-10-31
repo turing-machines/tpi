@@ -570,8 +570,8 @@ fn print_power_status_nodes(map: &serde_json::Value) -> anyhow::Result<()> {
 }
 
 fn result_printer(result: &serde_json::Value) -> anyhow::Result<()> {
-    let res = result.get("result").context("API error")?;
-    println!("{}", res.as_str().context("API error")?);
+    let res = get_json_str(result, "result");
+    println!("{}", res);
     Ok(())
 }
 
@@ -593,26 +593,15 @@ fn info_printer(map: &serde_json::Value) -> anyhow::Result<()> {
 }
 
 fn print_usb_status(map: &serde_json::Value) -> anyhow::Result<()> {
-    let results = map
+    let results = &map
         .get("result")
         .context("API error")?
         .as_array()
-        .context("API error")?[0]
-        .as_object()
-        .context("response parse error")?;
+        .context("API error")?[0];
 
-    let node = results["node"]
-        .as_str()
-        .expect("API error: Expected `node` attribute")
-        .to_lowercase();
-    let mode = results["mode"]
-        .as_str()
-        .expect("API error: Expected `mode` attribute")
-        .to_lowercase();
-    let route = results["route"]
-        .as_str()
-        .expect("API error: Expected `mode` attribute")
-        .to_lowercase();
+    let node = get_json_str(results, "node").to_lowercase();
+    let mode = get_json_str(results, "mode").to_lowercase();
+    let route = get_json_str(results, "route").to_lowercase();
 
     println!("{:^12}-->{:^12}", "USB Host", "USB Device");
 
@@ -640,6 +629,13 @@ fn build_progress_bar(size: u64) -> ProgressBar {
         .progress_chars("#>-"),
     );
     pb
+}
+
+fn get_json_str<'m>(map: &'m serde_json::Value, key: &str) -> &'m str {
+    map.get(key)
+        .unwrap_or_else(|| panic!("API error: expected `{}` key", key))
+        .as_str()
+        .unwrap_or_else(|| panic!("API error: `{}` is not a string", key))
 }
 
 fn get_json_num(map: &serde_json::Value, key: &str) -> u64 {
