@@ -25,8 +25,11 @@ use reqwest::{Body, Client, ClientBuilder};
 use std::fmt::Write;
 use std::path::Path;
 use std::str::from_utf8;
+use std::time::Duration;
 use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
+use tokio::time::sleep;
+use tokio::{spawn, task::JoinHandle};
 use tokio_util::io::ReaderStream;
 
 type ResponsePrinter = fn(&serde_json::Value) -> anyhow::Result<()>;
@@ -110,7 +113,7 @@ impl LegacyHandler {
         }
 
         body.get("response")
-            .ok_or_else(|| anyhow::anyhow!("expected 'reponse' key in JSON payload"))
+            .ok_or_else(|| anyhow::anyhow!("expected 'response' key in JSON payload"))
             .map(|response| {
                 let extracted = response
                     .as_array()
@@ -225,21 +228,13 @@ impl LegacyHandler {
     }
 
     async fn handle_flash(&mut self, args: &FlashArgs) -> anyhow::Result<()> {
+        // Opt out of the global request/response handler as we implement an alternative flow here.
+        self.skip_request = true;
+
         if args.local {
-            self.request
-                .url_mut()
-                .query_pairs_mut()
-                .append_pair("opt", "set")
-                .append_pair("type", "flash")
-                .append_key_only("local")
-                .append_pair("file", &args.image_path.to_string_lossy())
-                .append_pair("node", &(args.node - 1).to_string());
-            return Ok(());
+            return self.handle_local_file_upload(args).await;
         }
 
-        // Opt out of the global request/response handler as we implement an
-        // alternative flow here.
-        self.skip_request = true;
         let (mut file, file_name, file_size) = Self::open_file(&args.image_path).await?;
         println!("request flashing of {file_name} to node {}", args.node);
 
@@ -257,6 +252,114 @@ impl LegacyHandler {
         } else {
             self.handle_file_upload_v1_1(file, file_size).await
         }
+    }
+
+    async fn handle_local_file_upload(&mut self, args: &FlashArgs) -> anyhow::Result<()> {
+        self.request
+            .url_mut()
+            .query_pairs_mut()
+            .append_pair("opt", "set")
+            .append_pair("type", "flash")
+            .append_key_only("local")
+            .append_pair("file", &args.image_path.to_string_lossy())
+            .append_pair("node", &(args.node - 1).to_string());
+
+        let response = self.request.clone().send(self.client.clone()).await?;
+        let status = response.status();
+        let json_res = response.json::<serde_json::Value>().await;
+
+        if !status.is_success() {
+            if let Ok(json) = &json_res {
+                if let Some(err) = json.get("response") {
+                    println!("Error: {}", err);
+                }
+            }
+            bail!("Failed to begin flashing: {}", status);
+        }
+
+        let handle_id = get_json_num(&json_res?, "handle");
+        let (_, _, file_size) = Self::open_file(&args.image_path).await?;
+
+        println!("Flashing from image file {}...", args.image_path.display());
+
+        let progress_watcher = self.create_progress_watching_thread(file_size, handle_id);
+
+        tokio::try_join!(progress_watcher).expect("failed to wait for thread");
+
+        Ok(())
+    }
+
+    fn create_progress_watching_thread(&self, file_size: u64, handle_id: u64) -> JoinHandle<()> {
+        let initial_delay = Duration::from_secs(3);
+        let update_period = Duration::from_millis(2500);
+
+        let client = self.client.clone();
+        let mut req = self.request.clone();
+
+        req.url_mut()
+            .query_pairs_mut()
+            .clear()
+            .append_pair("opt", "get")
+            .append_pair("type", "flash");
+
+        spawn(async move {
+            let bar = build_progress_bar(file_size);
+            let mut verifying = false;
+
+            sleep(initial_delay).await;
+
+            loop {
+                let response = req
+                    .clone()
+                    .send(client.clone())
+                    .await
+                    .expect("Failed to send progress status request");
+
+                let status = response.status();
+                let json = response
+                    .json::<serde_json::Value>()
+                    .await
+                    .expect("Failed to parse response as JSON");
+
+                if !status.is_success() {
+                    if let Some(err) = json.get("response") {
+                        println!("Error: {}", err);
+                    }
+                    panic!("Failed to get flashing progress: {}", status);
+                }
+
+                if let Some(map) = json.get("Transferring") {
+                    let id = get_json_num(map, "id");
+                    assert_eq!(id, handle_id, "Invalid flashing handle");
+
+                    let bytes_written = get_json_num(map, "bytes_written");
+
+                    if bytes_written == file_size {
+                        if !verifying {
+                            bar.finish_and_clear();
+                            println!("Verifying checksum...");
+                            verifying = true;
+                        }
+                    } else {
+                        bar.set_position(bytes_written);
+                    }
+
+                    sleep(update_period).await;
+                    continue;
+                }
+
+                if json.get("Done").is_some() {
+                    println!("Done");
+                    break;
+                }
+
+                if let Some(map) = json.get("Error") {
+                    panic!("Error occured during flashing: {}", map);
+                }
+
+                panic!("Unexpected response: {:#?}", json);
+            }
+        })
     }
 
     async fn handle_file_upload_v1(
@@ -537,4 +640,11 @@ fn build_progress_bar(size: u64) -> ProgressBar {
         .progress_chars("#>-"),
     );
     pb
+}
+
+fn get_json_num(map: &serde_json::Value, key: &str) -> u64 {
+    map.get(key)
+        .unwrap_or_else(|| panic!("API error: expected `{}` key", key))
+        .as_u64()
+        .unwrap_or_else(|| panic!("API error: `{}` is not a number", key))
 }
