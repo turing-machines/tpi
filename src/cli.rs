@@ -36,8 +36,8 @@ pub struct Cli {
     #[arg(default_value = DEFAULT_HOST_NAME, value_parser = NonEmptyStringValueParser::new(), long, global = true)]
     pub host: Option<String>,
 
-    /// Specify user name to log in as. If unused, an interactive prompt will ask for credentials
-    /// unless authentication cache file is present.
+    /// Specify a user name to log in as. If unused, an interactive prompt will ask for credentials
+    /// unless a cached token file is present.
     #[arg(long, global = true)]
     pub user: Option<String>,
 
