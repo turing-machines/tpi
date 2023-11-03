@@ -278,18 +278,17 @@ impl LegacyHandler {
         }
 
         let handle_id = get_json_num(&json_res?, "handle");
-        let (_, _, file_size) = Self::open_file(&args.image_path).await?;
 
         println!("Flashing from image file {}...", args.image_path.display());
 
-        let progress_watcher = self.create_progress_watching_thread(file_size, handle_id);
+        let progress_watcher = self.create_progress_watching_thread(handle_id);
 
         tokio::try_join!(progress_watcher).expect("failed to wait for thread");
 
         Ok(())
     }
 
-    fn create_progress_watching_thread(&self, file_size: u64, handle_id: u64) -> JoinHandle<()> {
+    fn create_progress_watching_thread(&self, handle_id: u64) -> JoinHandle<()> {
         let initial_delay = Duration::from_secs(3);
         let update_period = Duration::from_millis(2500);
 
@@ -303,7 +302,7 @@ impl LegacyHandler {
             .append_pair("type", "flash");
 
         spawn(async move {
-            let bar = build_progress_bar(file_size);
+            let mut bar: Option<ProgressBar> = None;
             let mut verifying = false;
 
             sleep(initial_delay).await;
@@ -332,16 +331,22 @@ impl LegacyHandler {
                     let id = get_json_num(map, "id");
                     assert_eq!(id, handle_id, "Invalid flashing handle");
 
-                    let bytes_written = get_json_num(map, "bytes_written");
+                    let file_size = get_json_num(map, "size");
 
-                    if bytes_written == file_size {
-                        if !verifying {
-                            bar.finish_and_clear();
-                            println!("Verifying checksum...");
-                            verifying = true;
+                    if let Some(bar) = &bar {
+                        let bytes_written = get_json_num(map, "bytes_written");
+
+                        if bytes_written == file_size {
+                            if !verifying {
+                                bar.finish_and_clear();
+                                println!("Verifying checksum...");
+                                verifying = true;
+                            }
+                        } else {
+                            bar.set_position(bytes_written);
                         }
                     } else {
-                        bar.set_position(bytes_written);
+                        bar = Some(build_progress_bar(file_size));
                     }
 
                     sleep(update_period).await;
