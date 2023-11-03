@@ -194,7 +194,8 @@ pub struct FirmwareArgs {
 #[derive(Args, Clone)]
 #[group(required = true)]
 pub struct FlashArgs {
-    /// Update a node with an image local on the file-system.
+    /// Update a node with an image accessible from the local filesystem, typically a BMC-visible
+    /// microSD card.
     #[arg(short, long)]
     pub local: bool,
     /// Update a node with the given image.
