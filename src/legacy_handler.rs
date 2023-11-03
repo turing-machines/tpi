@@ -88,6 +88,7 @@ impl LegacyHandler {
             Commands::Uart(args) => self.handle_uart(args)?,
             Commands::Advanced(args) => self.handle_advanced(args).await?,
             Commands::Info => self.handle_info(),
+            Commands::Reboot => self.handle_reboot(),
         }
 
         if self.skip_request {
@@ -165,6 +166,15 @@ impl LegacyHandler {
             self.response_printer = Some(result_printer);
         }
         Ok(())
+    }
+
+    fn handle_reboot(&mut self) {
+        self.request
+            .url_mut()
+            .query_pairs_mut()
+            .append_pair("opt", "get")
+            .append_pair("type", "reboot");
+        self.response_printer = Some(result_printer);
     }
 
     fn handle_eth(&mut self, args: &EthArgs) -> anyhow::Result<()> {

@@ -91,6 +91,9 @@ pub enum Commands {
 
     /// Print turing-pi info
     Info,
+
+    /// Reboot the BMC chip. Nodes will lose power until booted!
+    Reboot,
 }
 
 #[derive(ValueEnum, Clone, PartialEq, Eq)]
