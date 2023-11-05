@@ -172,7 +172,7 @@ impl LegacyHandler {
         self.request
             .url_mut()
             .query_pairs_mut()
-            .append_pair("opt", "get")
+            .append_pair("opt", "set")
             .append_pair("type", "reboot");
         self.response_printer = Some(result_printer);
     }
@@ -293,14 +293,14 @@ impl LegacyHandler {
 
         let progress_watcher = self.create_progress_watching_thread(handle_id);
 
-        tokio::try_join!(progress_watcher).expect("failed to wait for thread");
+        progress_watcher.await.expect("failed to wait for thread");
 
         Ok(())
     }
 
     fn create_progress_watching_thread(&self, handle_id: u64) -> JoinHandle<()> {
         let initial_delay = Duration::from_secs(3);
-        let update_period = Duration::from_millis(2500);
+        let update_period = Duration::from_millis(500);
 
         let client = self.client.clone();
         let mut req = self.request.clone();
@@ -343,13 +343,14 @@ impl LegacyHandler {
 
                     let file_size = get_json_num(map, "size");
 
-                    if let Some(bar) = &bar {
+                    if let Some(bar) = &mut bar {
                         let bytes_written = get_json_num(map, "bytes_written");
 
                         if bytes_written == file_size {
                             if !verifying {
                                 bar.finish_and_clear();
-                                println!("Verifying checksum...");
+                                *bar = build_spinner();
+                                bar.set_message("Verifying checksum...");
                                 verifying = true;
                             }
                         } else {
@@ -431,19 +432,9 @@ impl LegacyHandler {
         multipart_request.set_multipart(form);
         multipart_request.send(self.client.clone()).await?;
 
-        let mut request = self.request.clone();
-        request
-            .url_mut()
-            .query_pairs_mut()
-            .append_pair("opt", "get")
-            .append_pair("type", "flash");
+        let progress_watcher = self.create_progress_watching_thread(handle);
+        progress_watcher.await.expect("failed to wait for thread");
 
-        let status = request
-            .send(self.client.clone())
-            .await
-            .context("flash request")?;
-
-        println!("{}", status.text().await?);
         Ok(())
     }
 
@@ -635,7 +626,7 @@ fn build_progress_bar(size: u64) -> ProgressBar {
     let pb = ProgressBar::new(size);
     pb.set_style(
         ProgressStyle::with_template(
-            "{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({eta})",
+            "{spinner:.green} [{elapsed_precise}] [{wide_bar:.blue/blue}] {bytes}/{total_bytes} ({eta})",
         )
         .unwrap()
         .with_key("eta", |state: &ProgressState, w: &mut dyn Write| {
@@ -643,6 +634,13 @@ fn build_progress_bar(size: u64) -> ProgressBar {
         })
         .progress_chars("#>-"),
     );
+    pb
+}
+
+fn build_spinner() -> ProgressBar {
+    let pb = ProgressBar::new_spinner();
+    pb.enable_steady_tick(Duration::from_millis(120));
+    pb.set_style(ProgressStyle::with_template("{spinner:.green} {msg}").unwrap());
     pb
 }
 
