@@ -1,9 +1,9 @@
 [package]
 name = "tpi"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2021"
 license = "Apache-2.0"
-authors = ["Sven Rademakers <sven@turingpi.com>", "Ruslan Akbashev <ruslan@turingpi.com>"]
+authors = ["Sven Rademakers <sven@turingpi.com>", "Ruslan Akbashev <ra@turingpi.com>"]
 description = "CLI tool to control a Turing-Pi board"
 homepage = "https://turingpi.com/"
 repository = "https://github.com/turing-machines/tpi"
