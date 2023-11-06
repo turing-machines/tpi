@@ -71,14 +71,13 @@ impl Request {
 
     pub async fn send(mut self, client: Client) -> Result<Response> {
         let mut authenticated = cfg!(not(feature = "localhost"));
-        let mut use_cache = true;
 
         let resp = loop {
             let mut builder =
                 RequestBuilder::from_parts(client.clone(), self.inner.try_clone().unwrap());
 
             if authenticated {
-                let token = self.auth_token(&client, use_cache).await?;
+                let token = self.get_bearer_token(&client).await?;
                 builder = builder.bearer_auth(token);
             }
 
@@ -88,21 +87,29 @@ impl Request {
 
             let resp = builder.send().await?;
             if resp.status() == StatusCode::UNAUTHORIZED {
-                use_cache = !authenticated;
+                delete_cached_token();
                 authenticated = true;
             } else {
                 break resp;
             }
         };
+
         Ok(resp)
     }
 
-    async fn auth_token(&mut self, client: &Client, use_cache: bool) -> Result<String> {
-        if use_cache {
-            get_bearer_token(&self.host, self.ver, &self.creds, client).await
-        } else {
-            request_token(&self.host, self.ver, &self.creds, client).await
+    async fn get_bearer_token(&mut self, client: &Client) -> Result<String> {
+        // If either credentials are supplied, use them
+        if self.creds.0.is_some() || self.creds.1.is_some() {
+            return request_token(&self.host, self.ver, &self.creds, client).await;
         }
+
+        // Else, try retrieving cached token from a file
+        if let Some(token) = get_cached_token() {
+            return Ok(token);
+        }
+
+        // If it doesn't exist, ask on an interactive prompt
+        request_token(&self.host, self.ver, &self.creds, client).await
     }
 
     pub fn url(&self) -> &Url {
@@ -149,31 +156,15 @@ fn url_from_host(host: &str, scheme: &str) -> Result<Url> {
     Ok(url)
 }
 
-async fn get_bearer_token(
-    host: &str,
-    ver: ApiVersion,
-    creds: &(Option<String>, Option<String>),
-    client: &Client,
-) -> Result<String> {
-    // If either credentials are supplied, use them
-    if creds.0.is_some() || creds.1.is_some() {
-        return request_token(host, ver, creds, client).await;
-    }
-
-    // Else, try retrieving cached token from a file
-    if let Some(token) = get_cached_token() {
-        return Ok(token);
-    }
-
-    // If it doesn't exist, ask on an interactive prompt
-    request_token(host, ver, creds, client).await
-}
-
 fn get_cached_token() -> Option<String> {
     let path = get_cache_file_location();
     let file = std::fs::read_to_string(path);
 
     file.ok()
+}
+
+fn delete_cached_token() {
+    let _ = std::fs::remove_file(get_cache_file_location());
 }
 
 fn get_cache_file_location() -> PathBuf {
@@ -239,7 +230,12 @@ async fn request_token(
 
             Ok(token)
         }
-        StatusCode::FORBIDDEN => bail!("Incorrect credentials"),
+        StatusCode::FORBIDDEN => bail!(
+            "{}",
+            resp.text()
+                .await
+                .unwrap_or("could not authenticate".to_string())
+        ),
         x => bail!("Unexpected status code {x}"),
     }
 }
