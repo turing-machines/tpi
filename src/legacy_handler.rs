@@ -467,7 +467,7 @@ impl LegacyHandler {
 
     fn handle_power_nodes(&mut self, args: &PowerArgs) -> anyhow::Result<()> {
         let mut serializer = self.request.url_mut().query_pairs_mut();
-        if args.cmd == PowerCmd::Get {
+        if args.cmd == PowerCmd::Status {
             serializer
                 .append_pair("opt", "get")
                 .append_pair("type", "power");

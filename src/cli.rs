@@ -129,7 +129,7 @@ pub enum PowerCmd {
     On,
     Off,
     Reset,
-    Get,
+    Status,
 }
 
 #[derive(ValueEnum, Clone, Copy, PartialEq, Eq)]
