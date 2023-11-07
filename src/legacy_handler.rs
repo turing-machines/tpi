@@ -33,6 +33,10 @@ use tokio::{spawn, task::JoinHandle};
 use tokio_util::io::ReaderStream;
 
 type ResponsePrinter = fn(&serde_json::Value) -> anyhow::Result<()>;
+/// specifies the size of the reader buffer. Increasing the size will also
+/// increase the frame size of files streamed over HTTP (up to its max fame
+/// size)
+const MULTIPART_BUFFER_SIZE: usize = 1024 * 32;
 
 pub struct LegacyHandler {
     request: Request,
@@ -415,7 +419,7 @@ impl LegacyHandler {
 
         println!("started transfer of {}..", HumanBytes(file_size));
         let pb = build_progress_bar(file_size);
-        let stream = ReaderStream::new(pb.wrap_async_write(file));
+        let stream = ReaderStream::with_capacity(pb.wrap_async_write(file), MULTIPART_BUFFER_SIZE);
         let stream_part =
             reqwest::multipart::Part::stream_with_length(Body::wrap_stream(stream), file_size)
                 .mime_str("application/octet-stream")?;
