@@ -374,10 +374,12 @@ impl LegacyHandler {
                 }
 
                 if let Some(map) = json.get("Error") {
-                    panic!("Error occured during flashing: {}", map);
+                    eprintln!("Error occured during flashing: {}", map);
+                    break;
                 }
 
-                panic!("Unexpected response: {:#?}", json);
+                eprintln!("Unexpected response: {:#?}", json);
+                break;
             }
         })
     }
