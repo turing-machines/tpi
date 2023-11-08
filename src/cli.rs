@@ -132,6 +132,11 @@ pub enum PowerCmd {
     Status,
 }
 
+#[derive(ValueEnum, Clone, PartialEq, Eq)]
+pub enum EthCmd {
+    Reset,
+}
+
 #[derive(ValueEnum, Clone, Copy, PartialEq, Eq)]
 pub enum ApiVersion {
     V1,
@@ -149,9 +154,8 @@ impl ApiVersion {
 
 #[derive(Args, Clone)]
 pub struct EthArgs {
-    /// Reset Ethernet switch
-    #[arg(short, long)]
-    pub reset: bool,
+    /// Specify command
+    pub cmd: EthCmd,
 }
 
 #[derive(Args)]
