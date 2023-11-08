@@ -13,8 +13,8 @@
 // limitations under the License.
 
 use crate::cli::{
-    AdvancedArgs, ApiVersion, Cli, Commands, EthArgs, FirmwareArgs, GetSet, PowerArgs, PowerCmd,
-    UartArgs, UsbArgs,
+    AdvancedArgs, ApiVersion, Cli, Commands, EthArgs, EthCmd, FirmwareArgs, GetSet, PowerArgs,
+    PowerCmd, UartArgs, UsbArgs,
 };
 use crate::cli::{FlashArgs, UsbCmd};
 use crate::request::Request;
@@ -182,15 +182,15 @@ impl LegacyHandler {
     }
 
     fn handle_eth(&mut self, args: &EthArgs) -> anyhow::Result<()> {
-        if args.reset {
-            self.request
-                .url_mut()
-                .query_pairs_mut()
-                .append_pair("opt", "set")
-                .append_pair("type", "network")
-                .append_pair("cmd", "reset");
-        } else {
-            bail!("eth subcommand called without any actions");
+        match args.cmd {
+            EthCmd::Reset => {
+                self.request
+                    .url_mut()
+                    .query_pairs_mut()
+                    .append_pair("opt", "set")
+                    .append_pair("type", "network")
+                    .append_pair("cmd", "reset");
+            }
         }
 
         self.response_printer = Some(result_printer);
