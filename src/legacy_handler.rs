@@ -375,11 +375,11 @@ impl LegacyHandler {
 
                 if let Some(map) = json.get("Error") {
                     eprintln!("Error occured during flashing: {}", map);
-                    break;
+                    return;
                 }
 
                 eprintln!("Unexpected response: {:#?}", json);
-                break;
+                return;
             }
         })
     }

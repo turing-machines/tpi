@@ -182,10 +182,9 @@ pub struct UartArgs {
     pub cmd: Option<String>,
 }
 
-#[derive(Args, Clone)]
+#[derive(Args)]
 pub struct UsbArgs {
     /// specify which mode to set the given node in.
-    #[arg(short, long)]
     pub mode: UsbCmd,
     /// instead of USB-A, route the USB-bus to the BMC chip.
     #[arg(short, long)]
