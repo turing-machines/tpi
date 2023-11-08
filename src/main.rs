@@ -58,8 +58,11 @@ async fn execute_cli_command(cli: &Cli) -> anyhow::Result<()> {
 
     let host = url::Host::parse(cli.host.as_ref().expect("host has a default set"))
         .map_err(|_| anyhow::anyhow!("please enter a valid hostname"))?;
+    let mut host = host.to_string();
+    // connect to specific port if specified.
+    if let Some(port) = cli.port {
+        host.push_str(&format!(":{}", port));
+    }
 
-    LegacyHandler::new(host.to_string(), cli)?
-        .handle_cmd(command)
-        .await
+    LegacyHandler::new(host, cli)?.handle_cmd(command).await
 }
