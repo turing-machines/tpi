@@ -1,28 +1,26 @@
-# Tpi Command
+# `tpi` command-line tool
 
-Tool to control your Turing-Pi board. It will use a default host address to find
-the board on the network (`turingpi.local`). Pass `-host <your-hostname/ip>` to
-change the default host address. For more information on usage, execute the help
-command: `tpi --help`
+This is a tool to control your Turing Pi board. It can be used from within the BMC (for example, via
+SSH) or outside, like your personal computer. In the latter case, it will try to connect to your
+board at the default hostname of `turingpi.local` unless `--host` is specified. For more information
+and usage, see `--help`.
 
-## Install
- 
+## Installation
+
 ### GitHub CI
 
-The `master` branch builds Windows, Linux, and Apple packages on every commit.
-Take a look at the artifacts of a workflow run to download these packages :
-https://github.com/turing-machines/tpi/actions/workflows/build.yml
+The GitHub action runner builds Windows, Linux and macOS packages on every commit to `master`.
+Take a look at the artifacts of any [workflow runs](https://github.com/turing-machines/tpi/actions/workflows/build.yml)
+to download them.
 
-### AUR
+### Arch User Repository (AUR)
 
-This package is available in the AUR repository.
-[see](https://aur.archlinux.org/packages/tpi)
-
+The package is available in the [AUR](https://aur.archlinux.org/packages/tpi).
 
 ### Cargo
 
-Install the latest master using the following cargo command.
+Install the latest version using the following cargo command:
 
-``` shell 
-cargo install --git https://github.com/turing-machines/tpi --branch
+```shell
+cargo install --git https://github.com/turing-machines/tpi
 ```
