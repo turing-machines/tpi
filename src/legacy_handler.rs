@@ -157,6 +157,7 @@ impl LegacyHandler {
                 .append_pair("opt", "get")
                 .append_pair("type", "uart")
                 .append_pair("node", &(args.node - 1).to_string());
+            self.response_printer = Some(uart_printer);
         } else {
             ensure!(
                 args.cmd.is_some(),
@@ -624,6 +625,14 @@ fn print_usb_status(map: &serde_json::Value) -> anyhow::Result<()> {
     };
 
     println!("{:^12}-->{:^12}", host, device);
+
+    Ok(())
+}
+
+fn uart_printer(map: &serde_json::Value) -> anyhow::Result<()> {
+    let data = get_json_str(map, "uart");
+
+    print!("{data}");
 
     Ok(())
 }
