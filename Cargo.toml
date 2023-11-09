@@ -1,12 +1,16 @@
 [package]
 name = "tpi"
-version = "1.0.2"
+version = "1.0.3"
 edition = "2021"
 license = "Apache-2.0"
 authors = ["Sven Rademakers <sven@turingpi.com>", "Ruslan Akbashev <ra@turingpi.com>"]
-description = "CLI tool to control a Turing-Pi board"
+description = "Official Turing-Pi2 CLI tool"
 homepage = "https://turingpi.com/"
 repository = "https://github.com/turing-machines/tpi"
+readme = "README.md"
+categories= ["command-line-interface"]
+keywords= ["turing-pi", "tpi", "CLI", "edge-computing", "board-management"]
+exclude = [".github", "deny.toml", "scripts/ci/*"]
 
 [dependencies]
 anyhow = "1.0.75"
