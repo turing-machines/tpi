@@ -19,6 +19,7 @@ use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
 
 use anyhow::{bail, Result};
+use reqwest::header::{HeaderValue, USER_AGENT};
 use reqwest::multipart::Form;
 use reqwest::{Client, Method, RequestBuilder, Response, StatusCode};
 use url::Url;
@@ -39,9 +40,13 @@ impl Request {
         host: String,
         ver: ApiVersion,
         creds: (Option<String>, Option<String>),
+        user_agent: &str,
     ) -> Result<Self> {
         let url = url_from_host(&host, ver.scheme())?;
-        let inner = reqwest::Request::new(Method::GET, url);
+        let mut inner = reqwest::Request::new(Method::GET, url);
+        inner
+            .headers_mut()
+            .insert(USER_AGENT, HeaderValue::from_str(user_agent)?);
 
         Ok(Self {
             host,

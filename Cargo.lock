@@ -860,6 +860,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "26072860ba924cbfa98ea39c8c19b4dd6a4a25423dbdf219c1eca91aa0cf6964"
 
 [[package]]
+name = "platform-info"
+version = "2.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d6259c4860e53bf665016f1b2f46a8859cadfa717581dc9d597ae4069de6300f"
+dependencies = [
+ "libc",
+ "winapi",
+]
+
+[[package]]
 name = "portable-atomic"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1357,6 +1367,7 @@ dependencies = [
  "crossterm",
  "dirs",
  "indicatif",
+ "platform-info",
  "reqwest",
  "serde_json",
  "tokio",

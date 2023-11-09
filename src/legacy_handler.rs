@@ -20,6 +20,7 @@ use crate::cli::{FlashArgs, UsbCmd};
 use crate::request::Request;
 use anyhow::{bail, ensure, Context};
 use indicatif::{HumanBytes, ProgressBar, ProgressState, ProgressStyle};
+use platform_info::{PlatformInfo, PlatformInfoAPI, UNameAPI};
 use reqwest::multipart::Part;
 use reqwest::{Body, Client, ClientBuilder};
 use std::fmt::Write;
@@ -67,7 +68,17 @@ impl LegacyHandler {
         let json = args.json;
         let version = args.api_version.expect("Missing API version");
         let creds = (args.user.clone(), args.password.clone());
-        let request = Request::new(host, version, creds)?;
+        let user_agent = PlatformInfo::new()
+            .map(|nfo| {
+                format!(
+                    "TPI ({};{};{})",
+                    nfo.sysname().to_string_lossy(),
+                    nfo.machine().to_string_lossy(),
+                    nfo.osname().to_string_lossy()
+                )
+            })
+            .unwrap_or("TPI".to_string());
+        let request = Request::new(host, version, creds, &user_agent)?;
         let client = Self::create_client(version)?;
 
         Ok(Self {
