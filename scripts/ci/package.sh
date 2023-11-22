@@ -32,10 +32,13 @@ package_macos() {
 }
 
 package_deb() {
+    sudo apt-get install -y dpkg-dev
     cargo install cargo-deb
     cargo-deb --target $1 --no-build --no-strip
+
     mkdir -p target/debian
     mv target/$1/debian/*.deb target/debian/
+    dpkg-scanpackages -m target/debian > target/debian/Packages
 }
 
 package_arch() { 
