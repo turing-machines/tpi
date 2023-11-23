@@ -113,18 +113,19 @@ pub enum ModeCmd {
     /// reboots supported compute modules and expose its eMMC storage as a mass
     /// storage device
     Msd,
-    /// Setting the recovery pin high will cause the module to halt after its
-    /// respective bootROM code. A manual restart is required.
-    Recovery,
 }
 
 #[derive(ValueEnum, Clone, PartialEq, Eq)]
 pub enum UsbCmd {
-    /// Configure the specified node as USB device. The `BMC` itself or USB-A port is USB host
+    /// Configure the specified node as USB device. The `BMC` itself or USB-A
+    /// port is USB host
     Device,
     /// Configure the specified node as USB Host. USB devices can be attached to
     /// the USB-A port on the board.
     Host,
+    /// Turns the module into flashing mode and sets the USB_OTG into device
+    /// mode - use to flash the module using USB_OTG port
+    Flash,
     Status,
 }
 

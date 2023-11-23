@@ -474,8 +474,14 @@ impl LegacyHandler {
             .append_pair("type", "usb")
             .append_pair("node", &(node - 1).to_string());
 
-        let mut mode = if args.mode == UsbCmd::Host { 0 } else { 1 };
-        mode |= u8::from(args.bmc) << 1;
+        let mut mode = match args.mode {
+            UsbCmd::Host => 0,
+            UsbCmd::Device => 1,
+            UsbCmd::Flash => 2,
+            UsbCmd::Status => panic!("cannot reach here"),
+        };
+
+        mode |= u8::from(args.bmc) << 2;
         serializer.append_pair("mode", &mode.to_string());
 
         self.response_printer = Some(result_printer);
@@ -545,27 +551,6 @@ impl LegacyHandler {
                     .append_pair("opt", "set")
                     .append_pair("type", "node_to_msd")
                     .append_pair("node", &(args.node - 1).to_string());
-            }
-            crate::cli::ModeCmd::Recovery => {
-                self.request
-                    .url_mut()
-                    .query_pairs_mut()
-                    .append_pair("opt", "set")
-                    .append_pair("type", "usb_boot")
-                    .append_pair("node", &(args.node - 1).to_string());
-                let response = self.request.clone().send(self.client.clone()).await?;
-
-                if !response.status().is_success() {
-                    bail!(
-                        "could not execute Recovery mode: {}",
-                        response.text().await?
-                    );
-                }
-
-                return self.handle_power_nodes(&PowerArgs {
-                    cmd: PowerCmd::Reset,
-                    node: Some(args.node),
-                });
             }
         }
         self.response_printer = Some(result_printer);
