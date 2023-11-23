@@ -52,14 +52,11 @@ impl Prompt {
     }
 
     fn read_loop(&mut self) -> Result<()> {
-        execute!(stdout(), event::EnableBracketedPaste)?;
-
         loop {
             self.print()?;
 
             let cont = match event::read()? {
                 Event::Key(key) => self.handle_key(key)?,
-                Event::Paste(text) => self.handle_paste(&text),
                 _ => true,
             };
 
@@ -67,8 +64,6 @@ impl Prompt {
                 break;
             }
         }
-
-        execute!(stdout(), event::DisableBracketedPaste)?;
 
         Ok(())
     }
@@ -139,15 +134,6 @@ impl Prompt {
         if self.cursor_idx < self.input.len() {
             self.input.remove(self.cursor_idx);
         }
-    }
-
-    fn handle_paste(&mut self, text: &str) -> bool {
-        if text.chars().all(|c| c != '\n') {
-            self.input.push_str(text);
-            self.cursor_idx += text.len();
-        }
-
-        true
     }
 }
 
