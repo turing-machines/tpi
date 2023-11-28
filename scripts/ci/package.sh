@@ -38,7 +38,9 @@ package_deb() {
 
     mkdir -p target/debian
     mv target/$1/debian/*.deb target/debian/
-    dpkg-scanpackages -m target/debian > target/debian/Packages
+    pushd target/debian
+    dpkg-scanpackages -m . > Packages
+    popd
 }
 
 package_arch() { 
