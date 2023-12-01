@@ -230,6 +230,12 @@ impl LegacyHandler {
                 .append_pair("type", "firmware")
                 .append_pair("file", &file_name)
                 .append_pair("length", &size.to_string());
+            if let Some(sha256) = &args.sha256 {
+                self.request
+                    .url_mut()
+                    .query_pairs_mut()
+                    .append_pair("sha256", sha256);
+            }
             self.handle_file_upload_v1_1(file, size).await
         }
     }
@@ -271,6 +277,20 @@ impl LegacyHandler {
             .append_pair("file", &file_name)
             .append_pair("length", &file_size.to_string())
             .append_pair("node", &(args.node - 1).to_string());
+
+        if let Some(sha256) = &args.sha256 {
+            self.request
+                .url_mut()
+                .query_pairs_mut()
+                .append_pair("sha256", sha256);
+        }
+
+        if args.skip_crc {
+            self.request
+                .url_mut()
+                .query_pairs_mut()
+                .append_key_only("skip_crc");
+        }
 
         if self.version == ApiVersion::V1 {
             self.handle_file_upload_v1(&mut file, file_name).await
@@ -361,7 +381,7 @@ impl LegacyHandler {
                     if let Some(bar) = &mut bar {
                         let bytes_written = get_json_num(map, "bytes_written");
 
-                        if bytes_written == file_size {
+                        if bytes_written >= file_size {
                             if !verifying {
                                 bar.finish_and_clear();
                                 *bar = build_spinner();

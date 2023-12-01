@@ -200,13 +200,17 @@ pub struct UsbArgs {
 pub struct FirmwareArgs {
     #[arg(short, long)]
     pub file: PathBuf,
+    /// A sha256 checksum will be used by the BMC to verify the integrity
+    /// of the input, in this case, the received OS image.
+    #[arg(long)]
+    pub sha256: Option<String>,
 }
 
 #[derive(Args, Clone)]
 #[group(required = true)]
 pub struct FlashArgs {
-    /// Update a node with an image accessible from the local filesystem, typically a BMC-visible
-    /// microSD card.
+    /// Update a node with an image accessible from the local filesystem,
+    /// typically a BMC-visible microSD card.
     #[arg(short, long)]
     pub local: bool,
     /// Update a node with the given image.
@@ -216,6 +220,16 @@ pub struct FlashArgs {
     #[arg(short, long)]
     #[arg(value_parser = clap::value_parser!(u8).range(1..5))]
     pub node: u8,
+    /// A sha256 checksum will be used by the BMC to verify the integrity
+    /// of the input, in this case, the received OS image.
+    #[arg(long)]
+    pub sha256: Option<String>,
+    /// Opt out of the crc integrity check. This is check is not responsible for
+    /// the sha256 validation. But validates the written areas on the node with
+    /// a crc digest. Skipping this step will reduce the overall time
+    /// but permits corrupted written data.
+    #[arg(long)]
+    pub skip_crc: bool,
 }
 
 #[derive(Args)]
