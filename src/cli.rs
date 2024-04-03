@@ -33,24 +33,24 @@ pub struct Cli {
 
     /// Specify the Turing-pi host to connect to. Note: IPv6 addresses must be wrapped in square
     /// brackets e.g. `[::1]`
-    #[arg(default_value = DEFAULT_HOST_NAME, value_parser = NonEmptyStringValueParser::new(), long, global = true)]
+    #[arg(default_value = DEFAULT_HOST_NAME, value_parser = NonEmptyStringValueParser::new(), long, global = true, env = "TPI_HOSTNAME")]
     pub host: Option<String>,
 
     /// Specify a custom port to connect to.
-    #[arg(long, global = true)]
+    #[arg(long, global = true, env = "TPI_PORT")]
     pub port: Option<u16>,
 
     /// Specify a user name to log in as. If unused, an interactive prompt will ask for credentials
     /// unless a cached token file is present.
-    #[arg(long, global = true)]
+    #[arg(long, global = true, env = "TPI_USERNAME")]
     pub user: Option<String>,
 
     /// Same as `--username`
-    #[arg(long, name = "PASS", global = true)]
+    #[arg(long, name = "PASS", global = true, env = "TPI_PASSWORD", hide_env_values = true)]
     pub password: Option<String>,
 
     /// Print results formatted as JSON
-    #[arg(long, global = true)]
+    #[arg(long, global = true, env = "TPI_OUTPUT_JSON")]
     pub json: bool,
 
     /// Force which version of the BMC API to use. Try lower the version if you are running
