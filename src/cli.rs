@@ -93,6 +93,10 @@ pub enum Commands {
     #[command(arg_required_else_help = true)]
     Advanced(AdvancedArgs),
 
+    /// Configure the cooling devices
+    #[command(arg_required_else_help = true)]
+    Cooling(CoolingArgs),
+
     /// Print turing-pi info
     Info,
 
@@ -240,4 +244,20 @@ pub struct PowerArgs {
     #[arg(short, long)]
     #[arg(value_parser = clap::value_parser!(u8).range(1..5))]
     pub node: Option<u8>,
+}
+
+#[derive(Args, Clone)]
+pub struct CoolingArgs {
+    /// Specify command
+    pub cmd: CoolingCmd,
+    /// Specify the cooling device (required for set command)
+    pub device: Option<String>,
+    /// Specify the cooling device speed (required for set command)
+    pub speed: Option<u32>,
+}
+
+#[derive(ValueEnum, Clone, PartialEq, Eq)]
+pub enum CoolingCmd {
+    Set,
+    Status,
 }

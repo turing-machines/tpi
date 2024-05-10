@@ -14,7 +14,7 @@
 
 use crate::cli::{
     AdvancedArgs, ApiVersion, Cli, Commands, EthArgs, EthCmd, FirmwareArgs, GetSet, PowerArgs,
-    PowerCmd, UartArgs, UsbArgs,
+    PowerCmd, UartArgs, UsbArgs, CoolingArgs, CoolingCmd
 };
 use crate::cli::{FlashArgs, UsbCmd};
 use crate::request::Request;
@@ -100,6 +100,7 @@ impl LegacyHandler {
             Commands::Flash(args) => self.handle_flash(args).await?,
             Commands::Eth(args) => self.handle_eth(args)?,
             Commands::Uart(args) => self.handle_uart(args)?,
+            Commands::Cooling(args) => self.handle_cooling(args).await?,
             Commands::Advanced(args) => self.handle_advanced(args).await?,
             Commands::Info => self.handle_info(),
             Commands::Reboot => self.handle_reboot(),
@@ -544,6 +545,37 @@ impl LegacyHandler {
         Ok(())
     }
 
+    async fn handle_cooling(&mut self, args: &CoolingArgs) -> anyhow::Result<()> {
+        let mut serializer = self.request.url_mut().query_pairs_mut();
+        match args.cmd {
+            CoolingCmd::Status => {
+                serializer
+                    .append_pair("opt", "get")
+                    .append_pair("type", "cooling");
+            }
+            CoolingCmd::Set => {
+                match (args.device.as_ref(), args.speed) {
+                    (Some(device), Some(speed)) => {
+                        serializer
+                            .append_pair("opt", "set")
+                            .append_pair("type", "cooling")
+                            .append_pair("device", device)
+                            .append_pair("speed", &speed.to_string());
+                    }
+                    _ => {
+                        return Err(anyhow::anyhow!(
+                            "Device and speed arguments are required for the set command"
+                        ));
+                    }
+                }
+            }
+        }
+    
+        self.response_printer = Some(cooling_printer);
+    
+        Ok(())
+    }
+
     async fn handle_advanced(&mut self, args: &AdvancedArgs) -> anyhow::Result<()> {
         match args.mode {
             crate::cli::ModeCmd::Normal => {
@@ -648,6 +680,33 @@ fn uart_printer(map: &serde_json::Value) -> anyhow::Result<()> {
     let data = get_json_str(map, "uart");
 
     print!("{data}");
+
+    Ok(())
+}
+
+fn cooling_printer(map: &serde_json::Value) -> anyhow::Result<()> {
+    if map.get("result").and_then(|r| r.as_str()).is_some() {
+        println!("{}", get_json_str(map, "result"));
+        return Ok(());
+    }
+
+    let results = map
+        .get("result")
+        .context("API error")?
+        .as_array()
+        .context("API error")?;
+
+    if results.is_empty() {
+        println!("No cooling devices found");
+    } else {
+        println!("|{:-^15}|{:-^7}|{:-^11}|", "Device", "Speed", "Max Speed");
+        for device in results {
+            let name = get_json_str(device, "device");
+            let speed = get_json_num(device, "speed");
+            let max_speed = get_json_num(device, "max_speed");
+            println!("|{:<15}|{:>7}|{:>11}|", name, speed, max_speed);
+        }
+    }
 
     Ok(())
 }
