@@ -16,6 +16,8 @@ mod cli;
 mod legacy_handler;
 mod prompt;
 mod request;
+mod usb_flash;
+mod utils;
 
 use crate::legacy_handler::LegacyHandler;
 use clap::{CommandFactory, Parser};

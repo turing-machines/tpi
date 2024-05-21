@@ -46,7 +46,13 @@ pub struct Cli {
     pub user: Option<String>,
 
     /// Same as `--username`
-    #[arg(long, name = "PASS", global = true, env = "TPI_PASSWORD", hide_env_values = true)]
+    #[arg(
+        long,
+        name = "PASS",
+        global = true,
+        env = "TPI_PASSWORD",
+        hide_env_values = true
+    )]
     pub password: Option<String>,
 
     /// Print results formatted as JSON
@@ -208,6 +214,8 @@ pub struct FirmwareArgs {
     /// of the input, in this case, the received OS image.
     #[arg(long)]
     pub sha256: Option<String>,
+    #[arg(short, long)]
+    pub usb: bool,
 }
 
 #[derive(Args, Clone)]

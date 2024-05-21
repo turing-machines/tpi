@@ -13,11 +13,12 @@
 // limitations under the License.
 
 use crate::cli::{
-    AdvancedArgs, ApiVersion, Cli, Commands, EthArgs, EthCmd, FirmwareArgs, GetSet, PowerArgs,
-    PowerCmd, UartArgs, UsbArgs, CoolingArgs, CoolingCmd
+    AdvancedArgs, ApiVersion, Cli, Commands, CoolingArgs, CoolingCmd, EthArgs, EthCmd,
+    FirmwareArgs, GetSet, PowerArgs, PowerCmd, UartArgs, UsbArgs,
 };
 use crate::cli::{FlashArgs, UsbCmd};
 use crate::request::Request;
+use crate::usb_flash;
 use anyhow::{bail, ensure, Context};
 use indicatif::{HumanBytes, ProgressBar, ProgressState, ProgressStyle};
 use platform_info::{PlatformInfo, PlatformInfoAPI, UNameAPI};
@@ -211,6 +212,10 @@ impl LegacyHandler {
 
     async fn handle_firmware(&mut self, args: &FirmwareArgs) -> anyhow::Result<()> {
         let (mut file, file_name, size) = Self::open_file(&args.file).await?;
+        if args.usb {
+            return usb_flash::flash_usb().await;
+        }
+
         if self.version == ApiVersion::V1 {
             // Opt out of the global request/response handler as we implement an
             // alternative flow here.
@@ -553,26 +558,24 @@ impl LegacyHandler {
                     .append_pair("opt", "get")
                     .append_pair("type", "cooling");
             }
-            CoolingCmd::Set => {
-                match (args.device.as_ref(), args.speed) {
-                    (Some(device), Some(speed)) => {
-                        serializer
-                            .append_pair("opt", "set")
-                            .append_pair("type", "cooling")
-                            .append_pair("device", device)
-                            .append_pair("speed", &speed.to_string());
-                    }
-                    _ => {
-                        return Err(anyhow::anyhow!(
-                            "Device and speed arguments are required for the set command"
-                        ));
-                    }
+            CoolingCmd::Set => match (args.device.as_ref(), args.speed) {
+                (Some(device), Some(speed)) => {
+                    serializer
+                        .append_pair("opt", "set")
+                        .append_pair("type", "cooling")
+                        .append_pair("device", device)
+                        .append_pair("speed", &speed.to_string());
                 }
-            }
+                _ => {
+                    return Err(anyhow::anyhow!(
+                        "Device and speed arguments are required for the set command"
+                    ));
+                }
+            },
         }
-    
+
         self.response_printer = Some(cooling_printer);
-    
+
         Ok(())
     }
 
