@@ -612,14 +612,22 @@ impl LegacyHandler {
 
     #[cfg(feature = "localhost")]
     async fn handle_eeporm(&mut self, args: &crate::cli::EepromArgs) -> anyhow::Result<()> {
+        use std::u16;
+
         use crate::board_info::*;
+        self.skip_request = true;
 
         let mut board_info = BoardInfo::load()?;
         match args.cmd {
             GetSet::Get => println!("{:#?}", board_info),
             GetSet::Set => {
                 if let Ok(ver) = std::env::var("tpi_hw_version") {
-                    board_info.hw_version(ver.parse::<u16>()?);
+                    let val = if ver.to_lowercase().starts_with("0x") {
+                        u16::from_str_radix(&ver[2..], 16)?
+                    } else {
+                        ver.parse::<u16>()?
+                    };
+                    board_info.hw_version(val);
                 }
                 if let Ok(dt) = std::env::var("tpi_factory_date") {
                     board_info.factory_date(dt.parse::<u16>()?);
@@ -637,7 +645,7 @@ impl LegacyHandler {
                 board_info.write_back()?;
             }
         }
-        Ok(())
+        board_info.verify_eeprom()
     }
 }
 

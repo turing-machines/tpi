@@ -1,3 +1,4 @@
+use anyhow::bail;
 use byteorder::{BigEndian, ByteOrder};
 use bytes::{Buf, BufMut, BytesMut};
 use crc32fast::Hasher;
@@ -26,32 +27,24 @@ pub struct BoardInfo {
 }
 
 impl BoardInfo {
-    pub fn hw_version(&mut self, hw_version: u16) {
-        self.hw_version = hw_version;
-    }
+    pub fn verify_eeprom(&self) -> anyhow::Result<()> {
+        use io::Read;
+        let eeprom = Self::find_i2c_device()?;
+        let mut file = OpenOptions::new().read(true).open(eeprom)?;
+        let mut bytes = BytesMut::zeroed(BOARDINFO_SIZE);
+        file.read_exact(bytes.as_mut())?;
 
-    /// days since May 1th 2024
-    pub fn factory_date(&mut self, days: u16) {
-        self.factory_date = days;
-    }
+        let mut hasher = Hasher::new();
+        hasher.update(&bytes[6..]);
+        let cksum = hasher.finalize();
 
-    pub fn factory_serial(&mut self, serial: impl AsRef<str>) {
-        let trimmed = serial.as_ref().as_bytes().take(8);
-        let mut buffer = BytesMut::zeroed(8);
-        buffer.as_mut().put(trimmed);
-        self.factory_serial.copy_from_slice(&buffer)
-    }
-
-    pub fn product_name(&mut self, name: impl AsRef<str>) {
-        let name = name.as_ref().as_bytes().take(16);
-        let mut buffer = BytesMut::zeroed(16);
-        buffer.as_mut().put(name);
-        self.product_name.copy_from_slice(&buffer);
-    }
-
-    pub fn mac(&mut self, mac: impl AsRef<str>) -> anyhow::Result<()> {
-        let bytes = <[u8; 6]>::from_hex(mac.as_ref())?;
-        self.mac.copy_from_slice(&bytes);
+        if self.crc32 != cksum {
+            bail!(
+                "EEPROM checksum mismatch! read {:x}, expected {:x}",
+                self.crc32,
+                cksum
+            );
+        }
         Ok(())
     }
 
@@ -105,7 +98,36 @@ impl BoardInfo {
         ))
     }
 
-    pub fn write_back(&self) -> io::Result<()> {
+    pub fn hw_version(&mut self, hw_version: u16) {
+        self.hw_version = hw_version;
+    }
+
+    /// days since May 1th 2024
+    pub fn factory_date(&mut self, days: u16) {
+        self.factory_date = days;
+    }
+
+    pub fn factory_serial(&mut self, serial: impl AsRef<str>) {
+        let trimmed = serial.as_ref().as_bytes().take(8);
+        let mut buffer = BytesMut::zeroed(8);
+        buffer.as_mut().put(trimmed);
+        self.factory_serial.copy_from_slice(&buffer)
+    }
+
+    pub fn product_name(&mut self, name: impl AsRef<str>) {
+        let name = name.as_ref().as_bytes().take(16);
+        let mut buffer = BytesMut::zeroed(16);
+        buffer.as_mut().put(name);
+        self.product_name.copy_from_slice(&buffer);
+    }
+
+    pub fn mac(&mut self, mac: impl AsRef<str>) -> anyhow::Result<()> {
+        let bytes = <[u8; 6]>::from_hex(mac.as_ref())?;
+        self.mac.copy_from_slice(&bytes);
+        Ok(())
+    }
+
+    pub fn write_back(&mut self) -> io::Result<()> {
         let eeprom = Self::find_i2c_device()?;
         let mut file = OpenOptions::new().write(true).truncate(true).open(eeprom)?;
         file.seek(io::SeekFrom::Start(0))?;
@@ -124,8 +146,8 @@ impl BoardInfo {
         // calculate crc
         let mut hasher = Hasher::new();
         hasher.update(&bytes[6..]);
-        let cksum = hasher.finalize();
-        BigEndian::write_u32(&mut bytes.as_mut()[2..6], cksum);
+        self.crc32 = hasher.finalize();
+        BigEndian::write_u32(&mut bytes.as_mut()[2..6], self.crc32);
 
         println!(
             "writing to eeprom:\n{:#?}",
@@ -164,7 +186,6 @@ impl fmt::Debug for BoardInfo {
         let hw_version = parse_version_field(self.hw_version);
         let start_date = chrono::NaiveDate::from_ymd_opt(2023, 5, 1).expect("a valid date");
 
-        // Calculate the resulting date by adding the number of days
         let reserved = format!("0x{:x}", self._reserved);
         let crc = format!("0x{:04x}", self.crc32);
         let date = start_date + chrono::Duration::days(self.factory_date as i64);
