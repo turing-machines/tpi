@@ -13,8 +13,8 @@
 // limitations under the License.
 
 use crate::cli::{
-    AdvancedArgs, ApiVersion, Cli, Commands, EthArgs, EthCmd, FirmwareArgs, GetSet, PowerArgs,
-    PowerCmd, UartArgs, UsbArgs, CoolingArgs, CoolingCmd
+    AdvancedArgs, ApiVersion, Cli, Commands, CoolingArgs, CoolingCmd, EthArgs, EthCmd,
+    FirmwareArgs, GetSet, PowerArgs, PowerCmd, UartArgs, UsbArgs,
 };
 use crate::cli::{FlashArgs, UsbCmd};
 use crate::request::Request;
@@ -104,6 +104,8 @@ impl LegacyHandler {
             Commands::Advanced(args) => self.handle_advanced(args).await?,
             Commands::Info => self.handle_info(),
             Commands::Reboot => self.handle_reboot(),
+            #[cfg(feature = "localhost")]
+            Commands::Eeprom(args) => self.handle_eeporm(args).await?,
         }
 
         if self.skip_request {
@@ -553,26 +555,24 @@ impl LegacyHandler {
                     .append_pair("opt", "get")
                     .append_pair("type", "cooling");
             }
-            CoolingCmd::Set => {
-                match (args.device.as_ref(), args.speed) {
-                    (Some(device), Some(speed)) => {
-                        serializer
-                            .append_pair("opt", "set")
-                            .append_pair("type", "cooling")
-                            .append_pair("device", device)
-                            .append_pair("speed", &speed.to_string());
-                    }
-                    _ => {
-                        return Err(anyhow::anyhow!(
-                            "Device and speed arguments are required for the set command"
-                        ));
-                    }
+            CoolingCmd::Set => match (args.device.as_ref(), args.speed) {
+                (Some(device), Some(speed)) => {
+                    serializer
+                        .append_pair("opt", "set")
+                        .append_pair("type", "cooling")
+                        .append_pair("device", device)
+                        .append_pair("speed", &speed.to_string());
                 }
-            }
+                _ => {
+                    return Err(anyhow::anyhow!(
+                        "Device and speed arguments are required for the set command"
+                    ));
+                }
+            },
         }
-    
+
         self.response_printer = Some(cooling_printer);
-    
+
         Ok(())
     }
 
@@ -607,6 +607,36 @@ impl LegacyHandler {
         }
         self.response_printer = Some(result_printer);
 
+        Ok(())
+    }
+
+    #[cfg(feature = "localhost")]
+    async fn handle_eeporm(&mut self, args: &crate::cli::EepromArgs) -> anyhow::Result<()> {
+        use crate::board_info::*;
+
+        let mut board_info = BoardInfo::load()?;
+        match args.cmd {
+            GetSet::Get => println!("{:#?}", board_info),
+            GetSet::Set => {
+                if let Ok(ver) = std::env::var("tpi_hw_version") {
+                    board_info.hw_version(ver.parse::<u16>()?);
+                }
+                if let Ok(dt) = std::env::var("tpi_factory_date") {
+                    board_info.factory_date(dt.parse::<u16>()?);
+                }
+                if let Ok(ser) = std::env::var("tpi_factory_serial") {
+                    board_info.factory_serial(ser);
+                }
+                if let Ok(name) = std::env::var("tpi_product_name") {
+                    board_info.product_name(name);
+                }
+                if let Ok(mac) = std::env::var("tpi_mac") {
+                    board_info.mac(mac).context("parsing mac")?;
+                }
+
+                board_info.write_back()?;
+            }
+        }
         Ok(())
     }
 }

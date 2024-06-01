@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(feature = "localhost")]
+mod board_info;
 mod cli;
 mod legacy_handler;
 mod prompt;
@@ -40,7 +42,7 @@ async fn main() -> ExitCode {
         if let Some(error) = e.downcast_ref::<reqwest::Error>() {
             println!("{error}");
         } else {
-            println!("{e}");
+            println!("{:#}", e);
         }
         return ExitCode::FAILURE;
     }

@@ -46,7 +46,13 @@ pub struct Cli {
     pub user: Option<String>,
 
     /// Same as `--username`
-    #[arg(long, name = "PASS", global = true, env = "TPI_PASSWORD", hide_env_values = true)]
+    #[arg(
+        long,
+        name = "PASS",
+        global = true,
+        env = "TPI_PASSWORD",
+        hide_env_values = true
+    )]
     pub password: Option<String>,
 
     /// Print results formatted as JSON
@@ -96,6 +102,10 @@ pub enum Commands {
     /// Configure the cooling devices
     #[command(arg_required_else_help = true)]
     Cooling(CoolingArgs),
+
+    #[cfg(feature = "localhost")]
+    #[command(arg_required_else_help = true, hide = true)]
+    Eeprom(EepromArgs),
 
     /// Print turing-pi info
     Info,
@@ -159,6 +169,12 @@ impl ApiVersion {
             ApiVersion::V1_1 => "https",
         }
     }
+}
+
+#[derive(Args, Clone)]
+pub struct EepromArgs {
+    /// Specify command
+    pub cmd: GetSet,
 }
 
 #[derive(Args, Clone)]
