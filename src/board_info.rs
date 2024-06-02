@@ -8,11 +8,12 @@ use std::{
     fmt,
     fs::{self, OpenOptions},
     io::{self, Seek, Write},
+    mem::size_of,
     path::PathBuf,
     u16,
 };
 
-const BOARDINFO_SIZE: usize = 42;
+const BOARDINFO_SIZE: usize = 50;
 const HEADER_VER: u16 = 1u16;
 
 pub struct BoardInfo {
@@ -21,7 +22,7 @@ pub struct BoardInfo {
     hdr_version: u16,
     hw_version: u16,
     factory_date: u16,
-    factory_serial: [u8; 8],
+    factory_serial: [u8; 16],
     product_name: [u8; 16],
     mac: [u8; 6],
 }
@@ -66,7 +67,7 @@ impl BoardInfo {
         let hdr_version = bytes.get_u16_le();
         let hw_version = bytes.get_u16_le();
         let factory_date = bytes.get_u16_le();
-        let mut factory_serial = [0u8; 8];
+        let mut factory_serial = [0u8; 16];
         bytes.copy_to_slice(&mut factory_serial);
         let mut product_name = [0u8; 16];
         bytes.copy_to_slice(&mut product_name);
@@ -108,8 +109,8 @@ impl BoardInfo {
     }
 
     pub fn factory_serial(&mut self, serial: impl AsRef<str>) {
-        let trimmed = serial.as_ref().as_bytes().take(8);
-        let mut buffer = BytesMut::zeroed(8);
+        let trimmed = serial.as_ref().as_bytes().take(16);
+        let mut buffer = BytesMut::zeroed(16);
         buffer.as_mut().put(trimmed);
         self.factory_serial.copy_from_slice(&buffer)
     }
