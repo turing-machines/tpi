@@ -13,23 +13,23 @@ keywords= ["turing-pi", "tpi", "CLI", "edge-computing", "board-management"]
 exclude = [".github", "deny.toml", "scripts/ci/*"]
 
 [dependencies]
-anyhow = "1.0.83"
+anyhow = "1.0.86"
 byteorder = "1.5.0"
 bytes = "1.6.0"
 chrono = "0.4.38"
-clap = { version = "4.5.4", features = ["derive", "wrap_help", "env"] }
-clap_complete = "4.5.2"
+clap = { version = "4.5.9", features = ["derive", "wrap_help", "env"] }
+clap_complete = "4.5.7"
 crc32fast = "1.4.2"
 crossterm = "=0.24.0"
 dirs = "5.0.1"
 hex = { version = "0.4.3" }
 indicatif = { version = "0.17.8", features = ["tokio"] }
 platform-info = "2.0.3"
-reqwest = { version = "0.12.4", default-features = false, features = ["gzip", "json", "multipart", "stream"] }
-serde_json = "1.0.117"
-tokio = { version = "1.37.0", features = ["rt", "rt-multi-thread", "macros", "fs"] }
+reqwest = { version = "0.12.5", default-features = false, features = ["gzip", "json", "multipart", "stream"] }
+serde_json = "1.0.120"
+tokio = { version = "1.38.0", features = ["rt", "rt-multi-thread", "macros", "fs"] }
 tokio-util = "0.7.11"
-url = "2.5.0"
+url = "2.5.2"
 
 [features]
 default = ["reqwest/rustls-tls"]
