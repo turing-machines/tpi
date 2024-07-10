@@ -1,3 +1,4 @@
+use crate::cli::BoardInfoAttribute::{self, *};
 use anyhow::bail;
 use byteorder::{BigEndian, ByteOrder};
 use bytes::{Buf, BufMut, BytesMut};
@@ -8,9 +9,7 @@ use std::{
     fmt,
     fs::{self, OpenOptions},
     io::{self, Seek, Write},
-    mem::size_of,
     path::PathBuf,
-    u16,
 };
 
 const BOARDINFO_SIZE: usize = 50;
@@ -162,6 +161,27 @@ impl BoardInfo {
         }
         Ok(())
     }
+
+    pub fn value_of(&self, attribute: &BoardInfoAttribute) -> String {
+        match attribute {
+            BoardInfoAttribute::Reserved => format!("0x{:x}", self._reserved),
+            BoardInfoAttribute::Crc32 => format!("0x{:04x}", self.crc32),
+            BoardInfoAttribute::HdrVersion => self.hdr_version.to_string(),
+            BoardInfoAttribute::HwVersion => parse_version_field(self.hw_version),
+            BoardInfoAttribute::FactoryDate => {
+                let start_date = chrono::NaiveDate::from_ymd_opt(2023, 5, 1).expect("a valid date");
+                let date = start_date + chrono::Duration::days(self.factory_date as i64);
+                date.to_string()
+            }
+            BoardInfoAttribute::FactorySerial => {
+                String::from_utf8_lossy(&self.factory_serial).to_string()
+            }
+            BoardInfoAttribute::ProductName => {
+                String::from_utf8_lossy(&self.product_name).to_string()
+            }
+            BoardInfoAttribute::Mac => self.mac.iter().fold(String::new(), |mac, b| mac + &format!("{:02x}", b)),
+        }
+    }
 }
 
 /// Returns the semver version pointed to by `version_ptr` as a char*, prefixed
@@ -184,25 +204,15 @@ fn parse_version_field(version: u16) -> String {
 
 impl fmt::Debug for BoardInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let hw_version = parse_version_field(self.hw_version);
-        let start_date = chrono::NaiveDate::from_ymd_opt(2023, 5, 1).expect("a valid date");
-
-        let reserved = format!("0x{:x}", self._reserved);
-        let crc = format!("0x{:04x}", self.crc32);
-        let date = start_date + chrono::Duration::days(self.factory_date as i64);
-        let product_name = String::from_utf8_lossy(&self.product_name);
-        let factory_serial = String::from_utf8_lossy(&self.factory_serial);
-        let mac: String = self.mac.iter().map(|b| format!("{:02x}", b)).collect();
-
         f.debug_struct("BoardInfo")
-            .field("reserved", &reserved)
-            .field("crc32", &crc)
-            .field("header version", &self.hdr_version)
-            .field("hardware version", &hw_version)
-            .field("factory date", &date)
-            .field("factory serial", &factory_serial)
-            .field("product name", &product_name)
-            .field("mac", &mac)
+            .field("reserved", &self.value_of(&Reserved))
+            .field("crc32", &self.value_of(&Crc32))
+            .field("header version", &self.value_of(&HdrVersion))
+            .field("hardware version", &self.value_of(&HwVersion))
+            .field("factory date", &self.value_of(&FactoryDate))
+            .field("factory serial", &self.value_of(&FactorySerial))
+            .field("product name", &self.value_of(&ProductName))
+            .field("mac", &self.value_of(&Mac))
             .finish()
     }
 }
