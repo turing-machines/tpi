@@ -1,7 +1,8 @@
-name: Tpi tool CI
+name: Tpi Validation Pipeline
 on: [push]
 jobs:
-  clippy_check:
+
+  cargo-clippy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -10,10 +11,22 @@ jobs:
         with:
           token: '${{ secrets.GITHUB_TOKEN }}'
           args: '--all-features'
-  cargo-test:
+
+  cargo-deny:
     runs-on: ubuntu-latest
     steps:
+    - uses: actions/checkout@v3
+    - uses: EmbarkStudios/cargo-deny-action@v1
+      with:
+        command: check bans licenses sources
+
+  cargo-test:
+    runs-on: ubuntu-latest
+    needs: cargo-deny
+    steps:
       - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
@@ -22,87 +35,27 @@ jobs:
       - uses: actions-rs/cargo@v1
         with:
           command: test
-  cargo-deny:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v3
-    - uses: EmbarkStudios/cargo-deny-action@v1
-      with:
-        command: check bans licenses sources
-  target-pipeline:
-    name: "${{ matrix.target }}"
-    strategy:
-      matrix:
-        target:
-          - aarch64-unknown-linux-gnu
-          - aarch64-apple-darwin
-          - x86_64-apple-darwin
-          - x86_64-pc-windows-msvc
-          - x86_64-unknown-linux-gnu
-        include:
-          - target: x86_64-unknown-linux-gnu
-            os: ubuntu-22.04
-          - target: aarch64-unknown-linux-gnu
-            os: ubuntu-22.04
-            cross: true
-          - target: aarch64-apple-darwin
-            os: macos-13
-          - target: x86_64-apple-darwin
-            os: macos-13
-          - target: x86_64-pc-windows-msvc
-            os: windows-2022
-    runs-on: '${{ matrix.os }}'
-    steps:
-      - uses: actions/checkout@v3
-      - name: install toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          default: true
-          profile: minimal
-          target: '${{ matrix.target }}'
-      - name: build
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: '--release --locked --target=${{ matrix.target }}'
-          use-cross: ${{ matrix.cross }}
-      - name: archive
-        uses: actions/upload-artifact@v3
-        with:
-          name: 'build output'
-          path: |
-            # workaround to prevent a common ancestor in the files,
-            # this way we can perserve the folder structure.
-            .github/workflows/build.yml
-            target/${{ matrix.target }}/release/tpi
-            target/${{ matrix.target }}/release/tpi.exe
-            target/${{ matrix.target }}/release/build/*/out/PKGBUILD
+      - name: Extract version from Cargo.toml
+        id: extract_version
+        run: |
+          VERSION=$(grep '^version = ' Cargo.toml | sed -E 's/version = "(.*)"/\1/')
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
 
-  archive:
-    name: ${{ matrix.name }} packager
-    runs-on: ubuntu-latest
-    needs: target-pipeline
-    strategy:
-      matrix:
-        name:
-          - debian
-          - arch
-          - windows
-          - macos
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/download-artifact@v3
-        with:
-          name: 'build output'
-      - name: running archiver 
-        run: scripts/ci/package.sh ${{ matrix.name }}
-      - name: archive packages
-        uses: actions/upload-artifact@v3
-        with:
-          name: '${{ matrix.name }} packages'
-          path: |
-            target/debian/* 
-            target/arch/*
-            target/win/*
-            target/apple/*
+      - name: Check if tag exists
+        id: check_tag
+        run: |
+          if git rev-parse --verify v${VERSION} >/dev/null 2>&1; then
+            echo "TAG_EXISTS=true" >> $GITHUB_ENV
+          else
+            echo "TAG_EXISTS=false" >> $GITHUB_ENV
+          fi
+
+      - name: Create new tag
+        if: ${{ env.TAG_EXISTS == 'false' }}
+        run: |
+          git config --global user.name "${{ github.actor }}"
+          git config --global user.email "noreply@turingpi.com"
+          git tag -a "v${{ env.VERSION }}" -m "Release version ${{ env.VERSION }}"
+          git push origin "v${{ env.VERSION }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
