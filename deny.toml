@@ -1,5 +1,4 @@
 [licenses]
-unlicensed = "deny"
 allow = [
     "MIT",
     "Apache-2.0",
@@ -8,14 +7,9 @@ allow = [
     "ISC",
     "OpenSSL",
     "MPL-2.0",
+    "Unicode-3.0",
     "Unicode-DFS-2016",
 ]
-deny = [
-    "Nokia",
-]
-copyleft = "deny"
-allow-osi-fsf-free = "neither"
-default = "deny"
 confidence-threshold = 0.8
 
 [[licenses.clarify]]
