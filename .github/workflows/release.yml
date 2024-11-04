@@ -1,10 +1,10 @@
 name: Release Pipeline
 on:
   push:
-    tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+'
-jobs:
+    branches:
+      - master
 
+jobs:
   build-pipeline:
     name: "Build ${{ matrix.target }}"
     strategy:
@@ -122,16 +122,38 @@ jobs:
           name: ${{ env.PKG_NAME }}.deb
           path: ${{ env.PKG_NAME }}.deb
 
-  create_release:
-    needs: debian-packages
+  create-release:
     runs-on: ubuntu-latest
+    needs: build-pipeline
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Extract version from Cargo.toml
+        id: extract_version
         run: |
           VERSION=$(grep '^version = ' Cargo.toml | sed -E 's/version = "(.*)"/\1/')
           echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: Check if tag exists
+        id: check_tag
+        run: |
+          if git rev-parse --verify v${VERSION} >/dev/null 2>&1; then
+            echo "TAG_EXISTS=true" >> $GITHUB_ENV
+          else
+            echo "no new version detected, aborting release Pipeline"
+            exit 0
+          fi
+
+      - name: Create new tag
+        run: |
+          git config --global user.name "${{ github.actor }}"
+          git config --global user.email "noreply@turingpi.com"
+          git tag -a "v${{ env.VERSION }}" -m "Release version ${{ env.VERSION }}"
+          git push origin "v${{ env.VERSION }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download artifacts
         uses: actions/download-artifact@v4
