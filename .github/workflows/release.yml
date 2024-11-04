@@ -124,7 +124,7 @@ jobs:
 
   create-release:
     runs-on: ubuntu-latest
-    needs: build-pipeline
+    needs: debian-packages
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
