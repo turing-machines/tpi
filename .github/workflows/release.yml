@@ -137,16 +137,16 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_ENV
 
       - name: Check if tag exists
-        id: check_tag
         run: |
           if git rev-parse --verify v${VERSION} >/dev/null 2>&1; then
             echo "TAG_EXISTS=true" >> $GITHUB_ENV
-          else
             echo "no new version detected, aborting release Pipeline"
-            exit 0
+          else
+            echo "TAG_EXISTS=false" >> $GITHUB_ENV
           fi
 
       - name: Create new tag
+        if: ${{ env.TAG_EXISTS == 'false' }}
         run: |
           git config --global user.name "${{ github.actor }}"
           git config --global user.email "noreply@turingpi.com"
@@ -156,12 +156,14 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download artifacts
+        if: ${{ env.TAG_EXISTS == 'false' }}
         uses: actions/download-artifact@v4
         with:
           path: artifacts
           merge-multiple: true
 
       - name: Release
+        if: ${{ env.TAG_EXISTS == 'false' }}
         uses: ncipollo/release-action@v1
         with:
           name: tpi v${{ env.VERSION }}
