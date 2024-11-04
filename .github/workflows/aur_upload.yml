@@ -1,0 +1,39 @@
+name: Upload AUR
+
+on:
+  release:
+    types: [created]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      - name: generate PKGBUILD
+        run: |
+          cp scripts/ci/PKGBUILD .
+          PACKAGE_NAME=$(grep '^name =' Cargo.toml | sed 's/name = "\(.*\)"/\1/')
+          VERSION=$(grep '^version =' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
+          MAINTAINER=$(grep '^authors =' Cargo.toml | sed 's/authors = \[\s*"\(.*\)\s*"\]/\1/')
+          DESCRIPTION=$(grep '^description =' Cargo.toml | sed 's/description = "\(.*\)"/\1/')
+          sed -i "1i # Maintainer: ${MAINTAINER}" PKGBUILD
+          sed -i "s/^pkgname=.*/pkgname=${PACKAGE_NAME}/" PKGBUILD
+          sed -i "s/^pkgver=.*/pkgver=${VERSION}/" PKGBUILD
+          sed -i "s/^pkgdesc=.*/pkgdesc='${DESCRIPTION}'/" PKGBUILD
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+          echo "PKG_NAME=${PACKAGE_NAME}" >> $GITHUB_ENV
+      - name: Validate package
+        uses: heyhusen/archlinux-package-action@v2
+        with:
+          updpkgsums: true
+          srcinfo: true
+      - name: Publish AUR package
+        uses: KSXGitHub/github-actions-deploy-aur@v3
+        with:
+          pkgname: ${{ env.PKG_NAME }}
+          pkgbuild: ./PKGBUILD
+          commit_username: 'Github automation'
+          commit_email: 'noreply@turingpi.com'
+          ssh_private_key: ${{ secrets.AUR_DEPLOY_KEY }}
+          commit_message: Update package to ${{ env.VERSION }}
