@@ -1,19 +1,18 @@
 name: Upload AUR
-
 on:
   release:
     types: [created]
 
 jobs:
-  build:
+  tpi-bin:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
       - name: generate PKGBUILD
         run: |
-          cp scripts/ci/PKGBUILD .
-          PACKAGE_NAME=$(grep '^name =' Cargo.toml | sed 's/name = "\(.*\)"/\1/')
+          cp scripts/ci/PKGBUILD.bin ./PKGBUILD
+          PACKAGE_NAME=$(grep '^name =' Cargo.toml | sed 's/name = "\(.*\)"/\1/')-bin
           VERSION=$(grep '^version =' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
           MAINTAINER=$(grep '^authors =' Cargo.toml | sed 's/authors = \[\s*"\(.*\)\s*"\]/\1/')
           DESCRIPTION=$(grep '^description =' Cargo.toml | sed 's/description = "\(.*\)"/\1/')
@@ -28,6 +27,69 @@ jobs:
         with:
           updpkgsums: true
           srcinfo: true
+      - name: Publish AUR package
+        uses: KSXGitHub/github-actions-deploy-aur@v3
+        with:
+          pkgname: ${{ env.PKG_NAME }}
+          pkgbuild: ./PKGBUILD
+          commit_username: 'Github automation'
+          commit_email: 'noreply@turingpi.com'
+          ssh_private_key: ${{ secrets.AUR_DEPLOY_KEY }}
+          commit_message: Update package to ${{ env.VERSION }}
+
+  tpi-src:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        name:
+          - master
+          - git
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      - name: generate PKGBUILD
+        run: |
+          cp scripts/ci/PKGBUILD ./PKGBUILD
+          PACKAGE_NAME=$(grep '^name =' Cargo.toml | sed 's/name = "\(.*\)"/\1/')
+          VERSION=$(grep '^version =' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
+          MAINTAINER=$(grep '^authors =' Cargo.toml | sed 's/authors = \[\s*"\(.*\)\s*"\]/\1/')
+          DESCRIPTION=$(grep '^description =' Cargo.toml | sed 's/description = "\(.*\)"/\1/')
+          if [[ ${{ matrix.name }} == "master" ]]; then
+            TAG=""
+            PACKAGE_NAME=${PACKAGE_NAME}-git
+            cat << 'EOF' >> PKGBUILD
+            pkgver() {
+                cd tpi
+                git describe --long --abbrev=7 | sed 's/\([^-]*-g\)/r\1/;s/-/./g'
+            }
+            EOF
+          else
+            TAG="#tag=v${VERSION}"
+            sed -i "3i pkgver=${VERSION}" PKGBUILD
+          fi
+          sed -i "1i # Maintainer: ${MAINTAINER}" PKGBUILD
+          sed -i "2i pkgname=${PACKAGE_NAME}" PKGBUILD
+          sed -i "4i pkgdesc='${DESCRIPTION}'" PKGBUILD
+          sed -i "5i source=(\"git+https://github.com/turing-machines/tpi.git${TAG}\")" PKGBUILD
+
+          install=$(cat scripts/ci/install)
+          cat << EOF >> PKGBUILD
+          package() {
+            TARGET=\$CARCH-unknown-linux-gnu
+            pkgname=tpi
+            $install
+          }
+          EOF
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+          echo "PKG_NAME=${PACKAGE_NAME}" >> $GITHUB_ENV
+      - run: cat ./PKGBUILD
+      - name: Create AUR package
+        uses: addnab/docker-run-action@v3
+        with:
+          registry: ghcr.io
+          image: 'ghcr.io/heyhusen/archlinux-package-action:latest'
+          options: -v ${{ github.workspace }}:/workspace --entrypoint=""
+          run: /workspace/scripts/ci/entry_point.sh
       - name: Publish AUR package
         uses: KSXGitHub/github-actions-deploy-aur@v3
         with:

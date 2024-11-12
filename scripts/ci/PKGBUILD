@@ -1,13 +1,25 @@
-pkgname=
-pkgver=
-pkgrel=1
-pkgdesc=
+pkgrel=3
 url=https://turingpi.com/
-license=('Apache')
-arch=('x86_64' 'aarch64')
-source_x86_64=("https://github.com/turing-machines/tpi/releases/download/v${pkgver}/tpi-x86_64-unknown-linux-gnu.tar.gz")
-source_aarch64=("https://github.com/turing-machines/tpi/releases/download/v${pkgver}/tpi-aarch64-unknown-linux-gnu.tar.gz")
+license=('Apache-2.0')
+makedepends=('cargo' 'git')
+arch=('x86_64' 'aarch64' 'armv7h')
+options=(!lto)
 
-package() {
-    tar -xzf "${srcdir}/tpi-${CARCH}-unknown-linux-gnu.tar.gz" -C "${pkgdir}"
+prepare() {
+    cd tpi
+    export RUSTUP_TOOLCHAIN=stable
+    cargo fetch --locked --target "$CARCH-unknown-linux-gnu"
+}
+
+build() {
+    cd tpi
+    export RUSTUP_TOOLCHAIN=stable
+    export CARGO_TARGET_DIR=target
+    cargo build --frozen --release --target "$CARCH-unknown-linux-gnu"
+}
+
+check() {
+    cd tpi
+    export RUSTUP_TOOLCHAIN=stable
+    cargo test --frozen
 }

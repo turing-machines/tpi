@@ -1,0 +1,13 @@
+pkgname=
+pkgver=
+pkgrel=1
+pkgdesc=
+url=https://turingpi.com/
+license=('Apache-2.0')
+arch=('x86_64' 'aarch64')
+source_x86_64=("https://github.com/turing-machines/tpi/releases/download/v${pkgver}/tpi-x86_64-unknown-linux-gnu.tar.gz")
+source_aarch64=("https://github.com/turing-machines/tpi/releases/download/v${pkgver}/tpi-aarch64-unknown-linux-gnu.tar.gz")
+
+package() {
+    tar -xzf "${srcdir}/tpi-${CARCH}-unknown-linux-gnu.tar.gz" -C "${pkgdir}"
+}
