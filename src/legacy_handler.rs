@@ -707,7 +707,7 @@ fn print_usb_status(map: &serde_json::Value) -> anyhow::Result<()> {
 
     println!("{:^12}-->{:^12}", "USB Host", "USB Device");
 
-    let (host, device) = if mode == "Host" {
+    let (host, device) = if mode == "host" {
         (node, route)
     } else {
         (route, node)
