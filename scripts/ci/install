@@ -1,6 +1,6 @@
 mkdir -p ${pkgdir}/usr/bin
 mkdir -p ${pkgdir}/usr/share/doc/tpi
-install -m 755 ${srcdir}/target/${TARGET}/release/tpi ${pkgdir}/usr/bin/tpi
-install -m 644 ${srcdir}/README.md ${pkgdir}/usr/share/doc/tpi/README.md
-install -m 644 ${srcdir}/LICENSE ${pkgdir}/usr/share/doc/tpi/copyright
+install -m 755 ${srcdir}/${pkgname}/target/${TARGET}/release/tpi ${pkgdir}/usr/bin/tpi
+install -m 644 ${srcdir}/${pkgname}/README.md ${pkgdir}/usr/share/doc/tpi/README.md
+install -m 644 ${srcdir}/${pkgname}/LICENSE ${pkgdir}/usr/share/doc/tpi/copyright
 
