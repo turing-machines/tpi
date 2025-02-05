@@ -52,6 +52,14 @@ e.g. with yay:
 yay -S tpi
 ```
 
+### NixOS
+
+The package is available in [Nixpkgs](https://search.nixos.org/packages?show=tpi). To try it out, you can run `tpi` in a nix-shell:
+
+```
+nix-shell -p tpi
+```
+
 ### getting Master
 
 The GitHub action runner builds Windows, Linux and macOS packages on every
