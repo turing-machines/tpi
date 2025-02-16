@@ -686,11 +686,11 @@ fn info_printer(map: &serde_json::Value) -> anyhow::Result<()> {
         .as_object()
         .context("response parse error")?;
 
-    println!("|{:-^10}|{:-^28}|", "key", "value");
+    println!("|{:-^15}|{:-^28}|", "key", "value");
     for (key, value) in results {
-        println!(" {:<10}: {}", key, value.as_str().expect("API error"));
+        println!(" {:<15}: {}", key, value.as_str().expect("API error"));
     }
-    println!("|{:-^10}|{:-^28}|", "", "");
+    println!("|{:-^15}|{:-^28}|", "", "");
     Ok(())
 }
 
