@@ -171,23 +171,12 @@ impl ApiVersion {
     }
 }
 
-#[derive(ValueEnum, Clone, PartialEq, Eq)]
-pub enum BoardInfoAttribute {
-    Reserved,
-    Crc32,
-    HdrVersion,
-    HwVersion,
-    FactoryDate,
-    FactorySerial,
-    ProductName,
-    Mac,
-}
-
+#[cfg(feature = "localhost")]
 #[derive(Args, Clone)]
 pub struct EepromArgs {
     /// Specify command
     pub cmd: GetSet,
-    pub attribute: Option<BoardInfoAttribute>,
+    pub attribute: Option<board_info::BoardInfoAttribute>,
 }
 
 #[derive(Args, Clone)]

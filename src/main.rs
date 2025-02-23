@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#[cfg(feature = "localhost")]
-mod board_info;
 mod cli;
 mod legacy_handler;
 mod prompt;

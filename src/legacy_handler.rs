@@ -612,9 +612,9 @@ impl LegacyHandler {
 
     #[cfg(feature = "localhost")]
     async fn handle_eeporm(&mut self, args: &crate::cli::EepromArgs) -> anyhow::Result<()> {
-        use crate::board_info::*;
-        self.skip_request = true;
+        use board_info::BoardInfo;
 
+        self.skip_request = true;
         let mut board_info = BoardInfo::load()?;
         match args.cmd {
             GetSet::Get => {
