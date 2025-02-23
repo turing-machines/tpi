@@ -32,8 +32,6 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
 
       - name: Install Toolchain
         uses: actions-rs/toolchain@v1
